@@ -1152,23 +1152,8 @@ export class StorageService {
             }
             if (Array.isArray(catalog.users)) {
               const remoteMapped = catalog.users.map(fromRow.user);
-              const currentUsers = this.getUsers();
-              const mergedMap = new Map<string, UserProfile>();
-              // 1. Seed or local users
-              currentUsers.forEach((u) => {
-                const key = u.id || u.email;
-                if (key) mergedMap.set(key, u);
-              });
-              // 2. Remote database users
-              remoteMapped.forEach((u) => {
-                const key = u.id || u.email;
-                if (key) mergedMap.set(key, u);
-              });
-              const merged = Array.from(mergedMap.values());
-              if (merged.length > 0) {
-                this.memoryCache.set(STORAGE_KEYS.USERS, merged);
-                localStorage.setItem(STORAGE_KEYS.USERS, safeStringify(merged));
-              }
+              this.memoryCache.set(STORAGE_KEYS.USERS, remoteMapped);
+              localStorage.setItem(STORAGE_KEYS.USERS, safeStringify(remoteMapped));
             }
             if (Array.isArray(catalog.payments) && catalog.payments.length > 0) {
               const mapped = catalog.payments.map(fromRow.payment);
@@ -1235,24 +1220,11 @@ export class StorageService {
               syncedSuccessfully = true;
             }
 
-            if (sbUsers && sbUsers.length > 0) {
+            if (Array.isArray(sbUsers)) {
               const remoteMapped = sbUsers.map(fromRow.user);
-              const currentUsers = this.getUsers();
-              const mergedMap = new Map<string, UserProfile>();
-              currentUsers.forEach((u) => {
-                const key = u.id || u.email;
-                if (key) mergedMap.set(key, u);
-              });
-              remoteMapped.forEach((u) => {
-                const key = u.id || u.email;
-                if (key) mergedMap.set(key, u);
-              });
-              const merged = Array.from(mergedMap.values());
-              if (merged.length > 0) {
-                this.memoryCache.set(STORAGE_KEYS.USERS, merged);
-                localStorage.setItem(STORAGE_KEYS.USERS, safeStringify(merged));
-                syncedSuccessfully = true;
-              }
+              this.memoryCache.set(STORAGE_KEYS.USERS, remoteMapped);
+              localStorage.setItem(STORAGE_KEYS.USERS, safeStringify(remoteMapped));
+              syncedSuccessfully = true;
             }
 
             if (sbPayments && sbPayments.length > 0) {

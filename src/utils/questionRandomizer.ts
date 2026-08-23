@@ -23,52 +23,87 @@ export function selectRandomQuestions(
   topicId: string = 'all',
   difficulty: string = 'all',
   count: number | 'unlimited' = 5,
-  seenQuestionIds: string[] = []
+  seenQuestionIds: string[] = [],
+  hierarchyFilter?: {
+    level?: string;
+    semester?: string;
+    departmentId?: string;
+    facultyId?: string;
+    universityId?: string;
+  }
 ): { selected: Question[]; newlySeenIds: string[] } {
-  const sourceQuestions = (allQuestions && allQuestions.length > 0) ? allQuestions : SEED_QUESTIONS;
+  const sourceQuestions = Array.isArray(allQuestions) ? allQuestions : [];
 
   // 1. Filter by status (allow Published, Active, or undefined)
-  let pool = sourceQuestions.filter((q) => !q.status || q.status.toLowerCase() === 'published' || q.status.toLowerCase() === 'active');
-  if (pool.length === 0) {
-    pool = [...sourceQuestions];
-  }
+  let pool = sourceQuestions.filter(
+    (q) => !q.status || q.status.toLowerCase() === 'published' || q.status.toLowerCase() === 'active'
+  );
 
-  // 2. Filter by course if specified
+  // 2. Filter strictly by course if specified
   if (courseId && courseId !== 'all') {
     const cleanTarget = courseId.trim().toLowerCase().replace(/\s+/g, '');
-    const courseFiltered = pool.filter((q) => {
+    pool = pool.filter((q) => {
       if (q.courseId === courseId) return true;
       if (q.courseCode && q.courseCode.trim().toLowerCase().replace(/\s+/g, '') === cleanTarget) return true;
       if (q.courseId && q.courseId.trim().toLowerCase().replace(/\s+/g, '') === cleanTarget) return true;
       return false;
     });
-    if (courseFiltered.length > 0) {
-      pool = courseFiltered;
+  }
+
+  // 3. Filter strictly by semester if specified in hierarchy
+  if (hierarchyFilter?.semester && hierarchyFilter.semester !== 'all') {
+    const normSem = hierarchyFilter.semester.toLowerCase().includes('first') ? 'first' : 'second';
+    pool = pool.filter((q) => {
+      if (!q.semester) return true;
+      const qSem = q.semester.toLowerCase().includes('first') ? 'first' : 'second';
+      return qSem === normSem;
+    });
+  }
+
+  // 4. Filter strictly by level if specified in hierarchy
+  if (hierarchyFilter?.level && hierarchyFilter.level !== 'all') {
+    const targetDigits = hierarchyFilter.level.replace(/\D/g, '');
+    if (targetDigits) {
+      pool = pool.filter((q) => {
+        if (!q.level) return true;
+        const qDigits = q.level.replace(/\D/g, '');
+        return !qDigits || qDigits === targetDigits;
+      });
     }
   }
 
-  // 3. Filter by topic if specified
+  // 5. Filter strictly by department if specified
+  if (hierarchyFilter?.departmentId && hierarchyFilter.departmentId !== 'all') {
+    pool = pool.filter((q) => {
+      if (!q.departmentId) return true;
+      return q.departmentId === hierarchyFilter.departmentId;
+    });
+  }
+
+  // 6. Filter strictly by faculty if specified
+  if (hierarchyFilter?.facultyId && hierarchyFilter.facultyId !== 'all') {
+    pool = pool.filter((q) => {
+      if (!q.facultyId) return true;
+      return q.facultyId === hierarchyFilter.facultyId;
+    });
+  }
+
+  // 7. Filter by topic if specified
   if (topicId && topicId !== 'all') {
-    const topicFiltered = pool.filter((q) => q.topicId === topicId);
-    if (topicFiltered.length > 0) {
-      pool = topicFiltered;
-    }
+    pool = pool.filter((q) => q.topicId === topicId);
   }
 
-  // 4. Filter by difficulty if specified
+  // 8. Filter by difficulty if specified
   if (difficulty && difficulty !== 'all') {
-    const diffFiltered = pool.filter((q) => q.difficulty?.toLowerCase() === difficulty.toLowerCase());
-    if (diffFiltered.length > 0) {
-      pool = diffFiltered;
-    }
+    pool = pool.filter((q) => q.difficulty?.toLowerCase() === difficulty.toLowerCase());
   }
 
-  // Fallback to general pool if filter yields empty
+  // If filtered pool is empty, return empty (strict isolation: NEVER leak other courses' questions!)
   if (pool.length === 0) {
-    pool = [...sourceQuestions];
+    return { selected: [], newlySeenIds: [] };
   }
 
-  // 5. Strict Deduplication by ID and normalized question text
+  // 9. Strict Deduplication by ID and normalized question text
   const uniquePoolMap = new Map<string, Question>();
   pool.forEach((q) => {
     const key = q.id || q.question.trim().toLowerCase();
@@ -80,7 +115,7 @@ export function selectRandomQuestions(
 
   const targetCount = count === 'unlimited' ? uniquePool.length : count;
 
-  // 6. Separate unseen vs seen questions
+  // 10. Separate unseen vs seen questions
   const seenSet = new Set(seenQuestionIds || []);
   const unseenPool = uniquePool.filter((q) => !seenSet.has(q.id));
 
@@ -101,7 +136,7 @@ export function selectRandomQuestions(
     candidatePool = shuffleArray(uniquePool).slice(0, targetCount);
   }
 
-  // 7. Final pass to ensure absolutely ZERO duplicates in the returned session
+  // 11. Final pass to ensure absolutely ZERO duplicates in the returned session
   const finalSelected: Question[] = [];
   const selectedKeys = new Set<string>();
 

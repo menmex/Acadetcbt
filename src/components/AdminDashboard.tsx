@@ -352,6 +352,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
   const [courseSemesterFilter, setCourseSemesterFilter] = useState<string>('all');
   const [courseSearch, setCourseSearch] = useState('');
   const [courseStatusFilter, setCourseStatusFilter] = useState<'all' | 'active' | 'disabled'>('all');
+  const [courseWithQuestionsOnly, setCourseWithQuestionsOnly] = useState<boolean>(false);
 
   // Add New Course 6-Step Flow State
   const [newCourseUniId, setNewCourseUniId] = useState<string>(universities[0]?.id || 'uni-ful');
@@ -697,6 +698,37 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
     onUpdateCourses(updatedCourses);
     const result = await StorageService.saveCourses(updatedCourses);
     if (!result.success) alert(`Local copy saved, but the database write failed: ${result.error}`);
+
+    // Synchronously cascade update to all questions attached to this course
+    const oldCode = editingCourse.code.trim().toLowerCase();
+    const oldId = editingCourse.id;
+    let questionsChanged = false;
+    const updatedQuestions = questions.map((q: any) => {
+      if (q.courseId === oldId || q.courseCode?.trim().toLowerCase() === oldCode || q.courseId?.trim().toLowerCase() === oldCode) {
+        questionsChanged = true;
+        return {
+          ...q,
+          courseId: oldId,
+          courseCode: editCourseCode.trim().toUpperCase(),
+          courseName: editCourseTitle.trim(),
+          universityId: uniId,
+          universityName: uniName,
+          facultyId: facId,
+          facultyName: facName,
+          departmentId: deptId,
+          departmentName: deptName,
+          level: editCourseLevel,
+          semester: editCourseSemester,
+        };
+      }
+      return q;
+    });
+
+    if (questionsChanged) {
+      onUpdateQuestions(updatedQuestions);
+      await StorageService.saveQuestions(updatedQuestions);
+    }
+
     setEditingCourse(null);
   };
 
@@ -3431,16 +3463,67 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                 </p>
               </div>
 
+              <div className="flex items-center gap-2">
+                {courses.length > 0 && (
+                  <button
+                    onClick={async () => {
+                      const confirmMsg = `Are you sure you want to CLEAR ALL ${courses.length} COURSES from database?\n\nThis will remove all courses so you can start with a 100% clean catalog.`;
+                      if (!window.confirm(confirmMsg)) return;
+                      onUpdateCourses([]);
+                      await StorageService.saveCourses([]);
+                      try {
+                        await fetch('/api/catalog/courses/clear-all', { method: 'POST' });
+                      } catch {}
+                    }}
+                    className="px-3 py-2.5 bg-rose-500/10 hover:bg-rose-500/20 border border-rose-500/30 text-rose-300 font-bold text-xs rounded-xl flex items-center justify-center gap-1.5 cursor-pointer whitespace-nowrap"
+                    title="Clear All Courses from database"
+                  >
+                    <Trash2 className="w-3.5 h-3.5" />
+                    <span>Clear All Courses</span>
+                  </button>
+                )}
+
+                <button
+                  onClick={() => {
+                    setNewCourseUniId(courseUniFilter !== 'all' ? courseUniFilter : (universities[0]?.id || 'uni-ful'));
+                    setNewCourseModalOpen(true);
+                  }}
+                  className="px-4 py-2.5 bg-emerald-600 hover:bg-emerald-500 text-white font-extrabold text-xs rounded-xl flex items-center justify-center gap-2 cursor-pointer shadow-lg shadow-emerald-600/20 whitespace-nowrap"
+                  id="admin-add-course-btn"
+                >
+                  <Plus className="w-4 h-4" />
+                  <span>Add New Course Program</span>
+                </button>
+              </div>
+            </div>
+
+            {/* Quick Filter Pill: All Courses vs Only With Questions */}
+            <div className="flex flex-wrap items-center gap-2 pt-2 border-t border-slate-800/80">
+              <span className="text-[11px] font-semibold text-slate-400">View Scope:</span>
               <button
-                onClick={() => {
-                  setNewCourseUniId(courseUniFilter !== 'all' ? courseUniFilter : (universities[0]?.id || 'uni-ful'));
-                  setNewCourseModalOpen(true);
-                }}
-                className="px-4 py-2.5 bg-emerald-600 hover:bg-emerald-500 text-white font-extrabold text-xs rounded-xl flex items-center justify-center gap-2 cursor-pointer shadow-lg shadow-emerald-600/20 whitespace-nowrap"
-                id="admin-add-course-btn"
+                type="button"
+                onClick={() => setCourseWithQuestionsOnly(false)}
+                className={`px-3 py-1 text-xs font-bold rounded-lg border transition-all cursor-pointer ${
+                  !courseWithQuestionsOnly
+                    ? 'bg-indigo-600/30 border-indigo-500 text-indigo-200 shadow-sm'
+                    : 'bg-slate-950 border-slate-800 text-slate-400 hover:text-slate-200'
+                }`}
               >
-                <Plus className="w-4 h-4" />
-                <span>Add New Course Program</span>
+                All Courses ({courses.length})
+              </button>
+              <button
+                type="button"
+                onClick={() => setCourseWithQuestionsOnly(true)}
+                className={`px-3 py-1 text-xs font-bold rounded-lg border transition-all cursor-pointer flex items-center gap-1.5 ${
+                  courseWithQuestionsOnly
+                    ? 'bg-amber-500/20 border-amber-500 text-amber-200 shadow-sm'
+                    : 'bg-slate-950 border-slate-800 text-slate-400 hover:text-slate-200'
+                }`}
+              >
+                <span>Only Courses With Saved Questions</span>
+                <span className="px-1.5 py-0.2 rounded bg-amber-500/30 text-amber-300 text-[10px]">
+                  {courses.filter((c: any) => questions.some((q: any) => q.courseId === c.id || q.courseCode?.trim().toLowerCase() === c.code.trim().toLowerCase())).length}
+                </span>
               </button>
             </div>
 
@@ -3557,7 +3640,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                 />
               </div>
 
-              {(courseUniFilter !== 'all' || courseFacultyFilter !== 'all' || courseDeptFilter !== 'all' || courseLevelFilter !== 'all' || courseSemesterFilter !== 'all' || courseSearch) && (
+              {(courseUniFilter !== 'all' || courseFacultyFilter !== 'all' || courseDeptFilter !== 'all' || courseLevelFilter !== 'all' || courseSemesterFilter !== 'all' || courseSearch || courseWithQuestionsOnly) && (
                 <button
                   onClick={() => {
                     setCourseUniFilter('all');
@@ -3566,6 +3649,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                     setCourseLevelFilter('all');
                     setCourseSemesterFilter('all');
                     setCourseSearch('');
+                    setCourseWithQuestionsOnly(false);
                   }}
                   className="px-3 py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-semibold rounded-xl cursor-pointer whitespace-nowrap"
                 >
@@ -3575,181 +3659,308 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
             </div>
           </div>
 
-          {/* 3. Course Data Table */}
-          <div className="bg-slate-900 border border-slate-800 rounded-2xl overflow-hidden shadow-xl">
-            <div className="overflow-x-auto">
-              <table className="w-full text-left text-xs text-slate-300">
-                <thead className="bg-slate-950 text-slate-400 uppercase font-semibold text-[10px] tracking-wider border-b border-slate-800">
-                  <tr>
-                    <th className="p-4">Course Program & Code</th>
-                    <th className="p-4">Academic Hierarchy Path</th>
-                    <th className="p-4">Level & Semester</th>
-                    <th className="p-4">Total Questions</th>
-                    <th className="p-4">Status</th>
-                    <th className="p-4 text-right">Actions</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-800">
-                  {courses
-                    .filter((c: any) => {
-                      const matchesSearch =
-                        !courseSearch ||
-                        c.code.toLowerCase().includes(courseSearch.toLowerCase()) ||
-                        c.title.toLowerCase().includes(courseSearch.toLowerCase());
-                      
-                      const matchesStatus =
-                        courseStatusFilter === 'all'
-                          ? true
-                          : courseStatusFilter === 'active'
-                          ? !c.isDisabled
-                          : !!c.isDisabled;
+          {/* 3. Course Data View: Responsive Mobile Cards & Desktop Table */}
+          {(() => {
+            const filteredCourses = courses.filter((c: any) => {
+              const matchesSearch =
+                !courseSearch ||
+                c.code.toLowerCase().includes(courseSearch.toLowerCase()) ||
+                c.title.toLowerCase().includes(courseSearch.toLowerCase());
+              
+              const matchesStatus =
+                courseStatusFilter === 'all'
+                  ? true
+                  : courseStatusFilter === 'active'
+                  ? !c.isDisabled
+                  : !!c.isDisabled;
 
-                      // 1. Uni Filter
-                      const matchesUni =
-                        courseUniFilter === 'all' ||
-                        c.universityId === courseUniFilter ||
-                        (c.universityName && c.universityName.toLowerCase().includes(
-                          (universities.find((u: any) => u.id === courseUniFilter)?.abbreviation || '').toLowerCase()
-                        ));
+              // 1. Uni Filter
+              const matchesUni =
+                courseUniFilter === 'all' ||
+                c.universityId === courseUniFilter ||
+                (c.universityName && c.universityName.toLowerCase().includes(
+                  (universities.find((u: any) => u.id === courseUniFilter)?.abbreviation || '').toLowerCase()
+                ));
 
-                      // 2. Faculty Filter
-                      const matchesFaculty =
-                        courseFacultyFilter === 'all' ||
-                        c.facultyId === courseFacultyFilter ||
-                        (c.facultyName && c.facultyName.toLowerCase().includes(
-                          (faculties.find((f: any) => f.id === courseFacultyFilter)?.name || '').toLowerCase()
-                        ));
+              // 2. Faculty Filter
+              const matchesFaculty =
+                courseFacultyFilter === 'all' ||
+                c.facultyId === courseFacultyFilter ||
+                (c.facultyName && c.facultyName.toLowerCase().includes(
+                  (faculties.find((f: any) => f.id === courseFacultyFilter)?.name || '').toLowerCase()
+                ));
 
-                      // 3. Dept Filter
-                      const matchesDept =
-                        courseDeptFilter === 'all' ||
-                        c.departmentId === courseDeptFilter ||
-                        (c.departmentName && c.departmentName.toLowerCase().includes(
-                          (departments.find((d: any) => d.id === courseDeptFilter)?.name || '').toLowerCase()
-                        ));
+              // 3. Dept Filter
+              const matchesDept =
+                courseDeptFilter === 'all' ||
+                c.departmentId === courseDeptFilter ||
+                (c.departmentName && c.departmentName.toLowerCase().includes(
+                  (departments.find((d: any) => d.id === courseDeptFilter)?.name || '').toLowerCase()
+                ));
 
-                      // 4. Level Filter
-                      const matchesLevel =
-                        courseLevelFilter === 'all' ||
-                        !c.level ||
-                        normalizeLevel(c.level) === normalizeLevel(courseLevelFilter);
+              // 4. Level Filter
+              const matchesLevel =
+                courseLevelFilter === 'all' ||
+                !c.level ||
+                normalizeLevel(c.level) === normalizeLevel(courseLevelFilter);
 
-                      // 5. Semester Filter
-                      const matchesSemester =
-                        courseSemesterFilter === 'all' ||
-                        !c.semester ||
-                        normalizeSemester(c.semester) === normalizeSemester(courseSemesterFilter);
+              // 5. Semester Filter
+              const matchesSemester =
+                courseSemesterFilter === 'all' ||
+                !c.semester ||
+                normalizeSemester(c.semester) === normalizeSemester(courseSemesterFilter);
 
-                      return matchesSearch && matchesStatus && matchesUni && matchesFaculty && matchesDept && matchesLevel && matchesSemester;
-                    })
-                    .map((course: any) => {
-                      const qCount = questions.filter((q: any) => q.courseId === course.id || q.courseId === course.code).length;
-                      const assignedUni = universities.find((u: any) => u.id === course.universityId);
+              // 6. Only With Questions Filter
+              const qCount = questions.filter((q: any) => q.courseId === c.id || q.courseId === c.code || q.courseCode?.trim().toLowerCase() === c.code.trim().toLowerCase()).length;
+              if (courseWithQuestionsOnly && qCount === 0) return false;
 
-                      return (
-                        <tr key={course.id} className="hover:bg-slate-800/50 transition-colors">
-                          <td className="p-4">
-                            <p className="font-extrabold text-white text-xs">{course.title}</p>
-                            <p className="text-[10px] font-mono font-bold text-amber-400 mt-0.5">{course.code}</p>
-                          </td>
-                          <td className="p-4">
-                            <div className="space-y-1 max-w-xs">
-                              <span className="inline-block px-2 py-0.5 rounded bg-amber-500/10 border border-amber-500/20 text-amber-300 font-bold text-[10px] truncate max-w-full">
-                                {assignedUni ? `${assignedUni.name} (${assignedUni.abbreviation})` : (course.universityName || 'Federal University Lokoja')}
-                              </span>
-                              <div className="text-[10px] text-slate-400 flex items-center gap-1">
-                                <span className="text-indigo-400 font-medium">{course.facultyName || 'Faculty of Science'}</span>
-                                <span className="text-slate-600">›</span>
-                                <span className="text-emerald-400 font-medium">{course.departmentName || 'Computer Science'}</span>
-                              </div>
-                            </div>
-                          </td>
-                          <td className="p-4">
-                            <span className="inline-block px-2 py-0.5 rounded bg-slate-800 text-slate-300 font-semibold text-[10px] mr-1.5">
+              return matchesSearch && matchesStatus && matchesUni && matchesFaculty && matchesDept && matchesLevel && matchesSemester;
+            });
+
+            if (filteredCourses.length === 0) {
+              return (
+                <div className="bg-slate-900 border border-slate-800 rounded-2xl p-10 text-center space-y-3 shadow-xl">
+                  <GraduationCap className="w-12 h-12 text-slate-600 mx-auto" />
+                  <p className="text-sm font-bold text-slate-300">No courses match the current filter criteria</p>
+                  <p className="text-xs text-slate-500 max-w-md mx-auto">
+                    {courseWithQuestionsOnly
+                      ? 'No courses with uploaded questions found for this selection. Upload questions to a course or click "Add New Course Program" above.'
+                      : 'You can add new courses using the button above or adjust the university, faculty, department, level, and semester filters.'}
+                  </p>
+                  <button
+                    onClick={() => {
+                      setNewCourseUniId(courseUniFilter !== 'all' ? courseUniFilter : (universities[0]?.id || 'uni-ful'));
+                      setNewCourseModalOpen(true);
+                    }}
+                    className="px-4 py-2 bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-xs rounded-xl cursor-pointer inline-flex items-center gap-1.5"
+                  >
+                    <Plus className="w-4 h-4" />
+                    <span>Create Course Now</span>
+                  </button>
+                </div>
+              );
+            }
+
+            return (
+              <div className="space-y-4">
+                {/* Mobile Cards (Visible on screens < 768px) */}
+                <div className="block md:hidden space-y-3">
+                  {filteredCourses.map((course: any) => {
+                    const qCount = questions.filter((q: any) => q.courseId === course.id || q.courseId === course.code || q.courseCode?.trim().toLowerCase() === course.code.trim().toLowerCase()).length;
+                    const assignedUni = universities.find((u: any) => u.id === course.universityId);
+
+                    return (
+                      <div key={course.id} className="bg-slate-900 border border-slate-800 rounded-2xl p-4 space-y-3 shadow-lg">
+                        <div className="flex items-start justify-between gap-2">
+                          <div>
+                            <span className="text-xs font-mono font-black text-amber-400 bg-amber-500/10 px-2 py-0.5 rounded border border-amber-500/20">
+                              {course.code}
+                            </span>
+                            <h3 className="font-extrabold text-white text-sm mt-1">{course.title}</h3>
+                          </div>
+                          <span
+                            className={`px-2 py-0.5 rounded-full text-[10px] font-extrabold ${
+                              !course.isDisabled
+                                ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/30'
+                                : 'bg-rose-500/10 text-rose-400 border border-rose-500/30'
+                            }`}
+                          >
+                            {!course.isDisabled ? 'Active' : 'Disabled'}
+                          </span>
+                        </div>
+
+                        {/* Hierarchy Path */}
+                        <div className="bg-slate-950 border border-slate-800/80 rounded-xl p-2.5 space-y-1.5 text-[11px]">
+                          <div className="text-amber-300 font-bold">
+                            {assignedUni ? `${assignedUni.name} (${assignedUni.abbreviation})` : (course.universityName || 'Federal University Lokoja')}
+                          </div>
+                          <div className="flex items-center gap-1.5 text-slate-400 flex-wrap">
+                            <span className="text-indigo-400 font-medium">{course.facultyName || 'Faculty of Science'}</span>
+                            <span className="text-slate-600">›</span>
+                            <span className="text-emerald-400 font-medium">{course.departmentName || 'Computer Science'}</span>
+                          </div>
+                          <div className="flex items-center gap-2 pt-1">
+                            <span className="px-2 py-0.5 rounded bg-slate-800 text-slate-300 font-semibold text-[10px]">
                               {course.level || '100 Level'}
                             </span>
-                            <span className="inline-block px-2 py-0.5 rounded bg-slate-800 text-indigo-300 font-semibold text-[10px]">
+                            <span className="px-2 py-0.5 rounded bg-slate-800 text-indigo-300 font-semibold text-[10px]">
                               {course.semester || 'First Semester'}
                             </span>
-                          </td>
-                          <td className="p-4 font-bold text-slate-200">
-                            <span className="px-2 py-1 rounded-lg bg-slate-950 border border-slate-800 text-xs">
+                            <span className="ml-auto px-2 py-0.5 rounded-lg bg-indigo-950/60 border border-indigo-800/60 text-indigo-300 font-bold text-[10px]">
                               {qCount} Questions
                             </span>
-                          </td>
-                          <td className="p-4">
-                            <span
-                              className={`px-2.5 py-1 rounded-full text-[10px] font-extrabold ${
-                                !course.isDisabled
-                                  ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/30'
-                                  : 'bg-rose-500/10 text-rose-400 border border-rose-500/30'
-                              }`}
-                            >
-                              {!course.isDisabled ? 'Active' : 'Disabled'}
-                            </span>
-                          </td>
-                          <td className="p-4 text-right space-x-1.5 whitespace-nowrap">
-                            <button
-                              onClick={() => {
-                                setEditingCourse(course);
-                                setEditCourseUniId(course.universityId || universities[0]?.id || 'uni-ful');
-                                setEditCourseFacultyId(course.facultyId || faculties[0]?.id || 'fac-1');
-                                setEditCourseDeptId(course.departmentId || departments[0]?.id || 'dept-1');
-                                setEditCourseLevel(course.level || '100 Level');
-                                setEditCourseSemester(course.semester || 'First Semester');
-                                setEditCourseCode(course.code || '');
-                                setEditCourseTitle(course.title || '');
-                              }}
-                              className="px-2.5 py-1 bg-indigo-600/30 hover:bg-indigo-600/50 border border-indigo-500/40 text-indigo-300 font-bold rounded-lg cursor-pointer"
-                            >
-                              Edit Hierarchy
-                            </button>
-                            <button
-                              onClick={() => setSelectedCourseDetail(course)}
-                              className="px-2.5 py-1 bg-slate-800 hover:bg-slate-700 text-slate-300 font-bold rounded-lg cursor-pointer"
-                            >
-                              Details
-                            </button>
-                            <button
-                              onClick={async () => {
-                                const updated = courses.map((c: any) =>
-                                  c.id === course.id ? { ...c, isDisabled: !c.isDisabled } : c
-                                );
-                                onUpdateCourses(updated);
-                                const result = await StorageService.saveCourses(updated);
-                                if (!result.success) alert(`Local copy saved, but the database write failed: ${result.error}`);
-                              }}
-                              className={`px-2.5 py-1 border font-bold rounded-lg cursor-pointer ${
-                                course.isDisabled
-                                  ? 'bg-emerald-600/20 text-emerald-300 border-emerald-500/30'
-                                  : 'bg-amber-500/20 text-amber-300 border-amber-500/30'
-                              }`}
-                            >
-                              {course.isDisabled ? 'Enable' : 'Disable'}
-                            </button>
-                            <button
-                              onClick={async () => {
-                                const confirmMsg = `Are you sure you want to PERMANENTLY delete course "${course.title}" (${course.code})?\n\nThis will remove it from Firebase Cloud Firestore and Local Storage.`;
-                                if (!window.confirm(confirmMsg)) return;
-                                const updated = courses.filter((c: any) => c.id !== course.id);
-                                onUpdateCourses(updated);
-                                const result = await StorageService.deleteCourse(course.id);
-                                if (!result.success) alert(`Local copy saved, but the database write failed: ${result.error}`);
-                                setCourseDependencyError(null);
-                              }}
-                              className="p-1.5 bg-rose-500/10 hover:bg-rose-500/20 text-rose-400 border border-rose-500/30 rounded-lg cursor-pointer"
-                              title="Permanently Delete Course"
-                            >
-                              <Trash2 className="w-3.5 h-3.5" />
-                            </button>
-                          </td>
+                          </div>
+                        </div>
+
+                        {/* Actions */}
+                        <div className="grid grid-cols-3 gap-2 pt-1">
+                          <button
+                            onClick={() => {
+                              setEditingCourse(course);
+                              setEditCourseUniId(course.universityId || universities[0]?.id || 'uni-ful');
+                              setEditCourseFacultyId(course.facultyId || faculties[0]?.id || 'fac-1');
+                              setEditCourseDeptId(course.departmentId || departments[0]?.id || 'dept-1');
+                              setEditCourseLevel(course.level || '100 Level');
+                              setEditCourseSemester(course.semester || 'First Semester');
+                              setEditCourseCode(course.code || '');
+                              setEditCourseTitle(course.title || '');
+                            }}
+                            className="py-1.5 px-2 bg-indigo-600/30 hover:bg-indigo-600/50 border border-indigo-500/40 text-indigo-300 font-bold text-xs rounded-xl cursor-pointer text-center"
+                          >
+                            Edit
+                          </button>
+                          <button
+                            onClick={() => setSelectedCourseDetail(course)}
+                            className="py-1.5 px-2 bg-slate-800 hover:bg-slate-700 text-slate-300 font-bold text-xs rounded-xl cursor-pointer text-center"
+                          >
+                            Details
+                          </button>
+                          <button
+                            onClick={async () => {
+                              const confirmMsg = `Are you sure you want to PERMANENTLY delete course "${course.title}" (${course.code})?\n\nThis will remove it from database and storage.`;
+                              if (!window.confirm(confirmMsg)) return;
+                              const updated = courses.filter((c: any) => c.id !== course.id);
+                              onUpdateCourses(updated);
+                              const result = await StorageService.deleteCourse(course.id);
+                              if (!result.success) alert(`Local copy saved, but the database write failed: ${result.error}`);
+                            }}
+                            className="py-1.5 px-2 bg-rose-500/10 hover:bg-rose-500/20 text-rose-400 border border-rose-500/30 font-bold text-xs rounded-xl cursor-pointer text-center flex items-center justify-center gap-1"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                            <span>Delete</span>
+                          </button>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+
+                {/* Desktop Data Table (Visible on screens >= 768px) */}
+                <div className="hidden md:block bg-slate-900 border border-slate-800 rounded-2xl overflow-hidden shadow-xl">
+                  <div className="overflow-x-auto">
+                    <table className="w-full min-w-[700px] text-left text-xs text-slate-300">
+                      <thead className="bg-slate-950 text-slate-400 uppercase font-semibold text-[10px] tracking-wider border-b border-slate-800">
+                        <tr>
+                          <th className="p-4">Course Program & Code</th>
+                          <th className="p-4">Academic Hierarchy Path</th>
+                          <th className="p-4">Level & Semester</th>
+                          <th className="p-4">Total Questions</th>
+                          <th className="p-4">Status</th>
+                          <th className="p-4 text-right">Actions</th>
                         </tr>
-                      );
-                    })}
-                </tbody>
-              </table>
-            </div>
-          </div>
+                      </thead>
+                      <tbody className="divide-y divide-slate-800">
+                        {filteredCourses.map((course: any) => {
+                          const qCount = questions.filter((q: any) => q.courseId === course.id || q.courseId === course.code || q.courseCode?.trim().toLowerCase() === course.code.trim().toLowerCase()).length;
+                          const assignedUni = universities.find((u: any) => u.id === course.universityId);
+
+                          return (
+                            <tr key={course.id} className="hover:bg-slate-800/50 transition-colors">
+                              <td className="p-4">
+                                <p className="font-extrabold text-white text-xs">{course.title}</p>
+                                <p className="text-[10px] font-mono font-bold text-amber-400 mt-0.5">{course.code}</p>
+                              </td>
+                              <td className="p-4">
+                                <div className="space-y-1 max-w-xs">
+                                  <span className="inline-block px-2 py-0.5 rounded bg-amber-500/10 border border-amber-500/20 text-amber-300 font-bold text-[10px] truncate max-w-full">
+                                    {assignedUni ? `${assignedUni.name} (${assignedUni.abbreviation})` : (course.universityName || 'Federal University Lokoja')}
+                                  </span>
+                                  <div className="text-[10px] text-slate-400 flex items-center gap-1">
+                                    <span className="text-indigo-400 font-medium">{course.facultyName || 'Faculty of Science'}</span>
+                                    <span className="text-slate-600">›</span>
+                                    <span className="text-emerald-400 font-medium">{course.departmentName || 'Computer Science'}</span>
+                                  </div>
+                                </div>
+                              </td>
+                              <td className="p-4">
+                                <span className="inline-block px-2 py-0.5 rounded bg-slate-800 text-slate-300 font-semibold text-[10px] mr-1.5">
+                                  {course.level || '100 Level'}
+                                </span>
+                                <span className="inline-block px-2 py-0.5 rounded bg-slate-800 text-indigo-300 font-semibold text-[10px]">
+                                  {course.semester || 'First Semester'}
+                                </span>
+                              </td>
+                              <td className="p-4 font-bold text-slate-200">
+                                <span className="px-2 py-1 rounded-lg bg-slate-950 border border-slate-800 text-xs">
+                                  {qCount} Questions
+                                </span>
+                              </td>
+                              <td className="p-4">
+                                <span
+                                  className={`px-2.5 py-1 rounded-full text-[10px] font-extrabold ${
+                                    !course.isDisabled
+                                      ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/30'
+                                      : 'bg-rose-500/10 text-rose-400 border border-rose-500/30'
+                                  }`}
+                                >
+                                  {!course.isDisabled ? 'Active' : 'Disabled'}
+                                </span>
+                              </td>
+                              <td className="p-4 text-right space-x-1.5 whitespace-nowrap">
+                                <button
+                                  onClick={() => {
+                                    setEditingCourse(course);
+                                    setEditCourseUniId(course.universityId || universities[0]?.id || 'uni-ful');
+                                    setEditCourseFacultyId(course.facultyId || faculties[0]?.id || 'fac-1');
+                                    setEditCourseDeptId(course.departmentId || departments[0]?.id || 'dept-1');
+                                    setEditCourseLevel(course.level || '100 Level');
+                                    setEditCourseSemester(course.semester || 'First Semester');
+                                    setEditCourseCode(course.code || '');
+                                    setEditCourseTitle(course.title || '');
+                                  }}
+                                  className="px-2.5 py-1 bg-indigo-600/30 hover:bg-indigo-600/50 border border-indigo-500/40 text-indigo-300 font-bold rounded-lg cursor-pointer"
+                                >
+                                  Edit Hierarchy
+                                </button>
+                                <button
+                                  onClick={() => setSelectedCourseDetail(course)}
+                                  className="px-2.5 py-1 bg-slate-800 hover:bg-slate-700 text-slate-300 font-bold rounded-lg cursor-pointer"
+                                >
+                                  Details
+                                </button>
+                                <button
+                                  onClick={async () => {
+                                    const updated = courses.map((c: any) =>
+                                      c.id === course.id ? { ...c, isDisabled: !c.isDisabled } : c
+                                    );
+                                    onUpdateCourses(updated);
+                                    const result = await StorageService.saveCourses(updated);
+                                    if (!result.success) alert(`Local copy saved, but the database write failed: ${result.error}`);
+                                  }}
+                                  className={`px-2.5 py-1 border font-bold rounded-lg cursor-pointer ${
+                                    course.isDisabled
+                                      ? 'bg-emerald-600/20 text-emerald-300 border-emerald-500/30'
+                                      : 'bg-amber-500/20 text-amber-300 border-amber-500/30'
+                                  }`}
+                                >
+                                  {course.isDisabled ? 'Enable' : 'Disable'}
+                                </button>
+                                <button
+                                  onClick={async () => {
+                                    const confirmMsg = `Are you sure you want to PERMANENTLY delete course "${course.title}" (${course.code})?\n\nThis will remove it from Firebase Cloud Firestore and Local Storage.`;
+                                    if (!window.confirm(confirmMsg)) return;
+                                    const updated = courses.filter((c: any) => c.id !== course.id);
+                                    onUpdateCourses(updated);
+                                    const result = await StorageService.deleteCourse(course.id);
+                                    if (!result.success) alert(`Local copy saved, but the database write failed: ${result.error}`);
+                                    setCourseDependencyError(null);
+                                  }}
+                                  className="p-1.5 bg-rose-500/10 hover:bg-rose-500/20 text-rose-400 border border-rose-500/30 rounded-lg cursor-pointer"
+                                  title="Permanently Delete Course"
+                                >
+                                  <Trash2 className="w-3.5 h-3.5" />
+                                </button>
+                              </td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              </div>
+            );
+          })()}
 
           {/* View Course Details Modal */}
           {selectedCourseDetail && (

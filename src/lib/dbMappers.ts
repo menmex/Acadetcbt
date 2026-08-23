@@ -220,6 +220,7 @@ export function courseToRow(c: Partial<Course> & { id: string }): DbRow {
     code: c.code ?? '',
     title: c.title ?? '',
     level: c.level ?? null,
+    semester: c.semester ?? 'First',
     credit_units: (c as any).creditUnits ?? (c as any).credit_units ?? null,
     description: (c as any).description ?? null,
     session: c.session ?? null,

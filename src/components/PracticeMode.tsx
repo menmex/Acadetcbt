@@ -205,17 +205,23 @@ export const PracticeMode: React.FC<PracticeModeProps> = ({
       selectedTopicId,
       selectedDifficulty,
       targetCount,
-      user?.seenQuestionIds || []
+      user?.seenQuestionIds || [],
+      {
+        universityId: selectedUniId,
+        facultyId: selectedFacultyId,
+        departmentId: selectedDeptId,
+        level: selectedLevel,
+        semester: selectedSemester,
+      }
     );
 
-    let finalQuestions = selected;
-    if (!finalQuestions || finalQuestions.length === 0) {
-      const fallback = selectRandomQuestions(questions, 'all', 'all', 'all', targetCount, []);
-      finalQuestions = fallback.selected.length > 0 ? fallback.selected : SEED_QUESTIONS.slice(0, typeof targetCount === 'number' ? targetCount : 10);
+    if (!selected || selected.length === 0) {
+      alert('No questions found for this course and semester in the database. Please select another course or upload questions.');
+      return;
     }
 
     // Always shuffle questions each time a user starts practice/CBT mode
-    const shuffledQuestions = shuffleArray(finalQuestions);
+    const shuffledQuestions = shuffleArray(selected);
 
     setActiveQuestions(shuffledQuestions);
     setCurrentIndex(0);

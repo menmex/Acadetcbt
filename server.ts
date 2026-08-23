@@ -3388,7 +3388,7 @@ app.post("/api/users/clear-all", async (req, res) => {
   try {
     const supabase = getSupabaseAdminClient();
     if (supabase) {
-      const { error } = await supabase.from("users").delete().neq("id", "");
+      const { error } = await supabase.from("users").delete().neq("id", "00000000-0000-0000-0000-000000000000");
       if (error) return res.status(500).json({ success: false, error: error.message });
     }
     return res.json({ success: true, message: "All users cleared from database." });
