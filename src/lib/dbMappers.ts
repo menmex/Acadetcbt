@@ -70,8 +70,6 @@ export function questionToRow(q: Partial<Question> & { id: string }): DbRow {
     id: rowId,
     course_id: toValidUuid(q.courseId ?? (q as any).course_id) ?? null,
     university_id: toValidUuid(q.universityId ?? (q as any).university_id) ?? null,
-    department_id: toValidUuid((q as any).departmentId ?? (q as any).department_id) ?? null,
-    question: qText,
     question_text: qText,
     option_a: q.optionA ?? (q as any).option_a ?? (q as any).optA ?? '',
     option_b: q.optionB ?? (q as any).option_b ?? (q as any).optB ?? '',
@@ -93,7 +91,6 @@ export function questionToRow(q: Partial<Question> & { id: string }): DbRow {
     topic_name: q.topicName ?? (q as any).topic_name ?? null,
     version_number: q.versionNumber ?? (q as any).version_number ?? null,
     faculty_id: toValidUuid((q as any).facultyId ?? (q as any).faculty_id) ?? null,
-    created_by: toValidUuid(q.createdBy ?? (q as any).created_by) ?? null,
     last_modified_by: q.lastModifiedBy ?? (q as any).last_modified_by ?? null,
     version_history: q.versionHistory ?? (q as any).version_history ?? null,
     quality_score: q.qualityScore ?? (q as any).quality_score ?? null,
@@ -222,6 +219,12 @@ export function departmentFromRow(row: DbRow): Department {
 }
 
 export function courseToRow(c: Partial<Course> & { id: string }): DbRow {
+  const sem = c.semester || 'First Semester';
+  const semTag = `__SEM:${sem}__`;
+  let desc = (c as any).description || '';
+  if (!desc.includes('__SEM:')) {
+    desc = desc ? `${desc} ${semTag}` : semTag;
+  }
   return {
     id: toValidUuid(c.id) || c.id,
     university_id: toValidUuid(c.universityId) ?? null,
@@ -229,9 +232,8 @@ export function courseToRow(c: Partial<Course> & { id: string }): DbRow {
     code: c.code ?? '',
     title: c.title ?? '',
     level: c.level ?? null,
-    semester: c.semester ?? 'First',
     credit_units: (c as any).creditUnits ?? (c as any).credit_units ?? null,
-    description: (c as any).description ?? null,
+    description: desc || null,
     session: c.session ?? null,
     university_name: (c as any).universityName ?? (c as any).university_name ?? null,
     is_active: !(c as any).isDisabled,
