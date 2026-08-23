@@ -95,6 +95,7 @@ export interface Course {
   level?: string;
   semester: 'First' | 'Second' | 'First Semester' | 'Second Semester' | string;
   session: string;
+  description?: string;
   isDisabled?: boolean;
 }
 

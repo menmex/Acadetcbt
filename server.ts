@@ -2846,7 +2846,21 @@ app.post("/api/supabase/migrate-seed", requireAdminPermission('manage_settings')
 
     if (Array.isArray(courses) && courses.length > 0) {
       const records = courses.map((c: any) => courseToRow(c));
-      const { error } = await supabase.from("courses").upsert(records);
+      let { error } = await supabase.from("courses").upsert(records);
+      if (error && (error.message.includes("semester") || error.message.includes("schema cache") || error.code === 'PGRST204')) {
+        const fallback = records.map((r: any) => {
+          const copy = { ...r };
+          if (copy.semester) {
+            const semTag = `__SEM:${copy.semester}__`;
+            copy.description = copy.description ? `${copy.description} ${semTag}` : semTag;
+          }
+          delete copy.semester;
+          return copy;
+        });
+        const retry = await supabase.from("courses").upsert(fallback);
+        if (!retry.error) error = null;
+        else error = retry.error;
+      }
       if (error) throw new Error(error.message);
       summary.courses = records.length;
     }
@@ -2860,7 +2874,21 @@ app.post("/api/supabase/migrate-seed", requireAdminPermission('manage_settings')
       }
       if (valid.length > 0) {
         const records = valid.map((q) => questionToRow(q as Partial<Question> & { id: string }));
-        const { error } = await supabase.from("questions").upsert(records);
+        let { error } = await supabase.from("questions").upsert(records);
+        if (error && (error.message.includes("semester") || error.message.includes("schema cache") || error.code === 'PGRST204')) {
+          const fallback = records.map((r: any) => {
+            const copy = { ...r };
+            if (copy.semester) {
+              const semTag = `__SEM:${copy.semester}__`;
+              copy.explanation = copy.explanation ? `${copy.explanation} ${semTag}` : semTag;
+            }
+            delete copy.semester;
+            return copy;
+          });
+          const retry = await supabase.from("questions").upsert(fallback);
+          if (!retry.error) error = null;
+          else error = retry.error;
+        }
         if (error) throw new Error(error.message);
         summary.questions = records.length;
       }
@@ -3041,7 +3069,20 @@ app.post("/api/catalog/courses", requireAdminPermission('manage_courses'), async
         const { data: deptCheck } = await supabase.from("departments").select("id").eq("id", row.department_id).maybeSingle();
         if (!deptCheck) row.department_id = null;
       }
-      const { error } = await supabase.from("courses").upsert(row);
+      let { error } = await supabase.from("courses").upsert(row);
+      // If error is about missing semester column or schema cache discrepancy, adapt safely
+      if (error && (error.message.includes("semester") || error.message.includes("schema cache") || error.code === 'PGRST204')) {
+        const fallbackRow = { ...row };
+        const semTag = `__SEM:${data.semester || 'First Semester'}__`;
+        fallbackRow.description = fallbackRow.description ? `${fallbackRow.description} ${semTag}` : semTag;
+        delete fallbackRow.semester;
+        const retryResult = await supabase.from("courses").upsert(fallbackRow);
+        if (!retryResult.error) {
+          error = null;
+        } else {
+          error = retryResult.error;
+        }
+      }
       if (error) return res.status(500).json({ success: false, error: error.message });
     }
     return res.json({ success: true, course: data });
@@ -3084,7 +3125,24 @@ app.post("/api/catalog/questions", requireAdminPermission('manage_questions'), a
       // Split into batches of 100
       for (let i = 0; i < records.length; i += 100) {
         const batch = records.slice(i, i + 100);
-        const { error } = await supabase.from("questions").upsert(batch);
+        let { error } = await supabase.from("questions").upsert(batch);
+        if (error && (error.message.includes("semester") || error.message.includes("schema cache") || error.code === 'PGRST204')) {
+          const fallbackBatch = batch.map((r: any) => {
+            const copy = { ...r };
+            if (copy.semester) {
+              const semTag = `__SEM:${copy.semester}__`;
+              copy.explanation = copy.explanation ? `${copy.explanation} ${semTag}` : semTag;
+            }
+            delete copy.semester;
+            return copy;
+          });
+          const retryResult = await supabase.from("questions").upsert(fallbackBatch);
+          if (!retryResult.error) {
+            error = null;
+          } else {
+            error = retryResult.error;
+          }
+        }
         if (error) return res.status(500).json({ success: false, error: error.message, skipped });
       }
     }

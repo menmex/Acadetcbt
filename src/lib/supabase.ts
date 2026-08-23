@@ -208,7 +208,25 @@ async function responseResult(response: Response): Promise<SyncResult> {
 async function upsertRows(table: string, rows: DbRow[]): Promise<SyncResult> {
   const admin = getSupabaseAdminClient();
   if (!admin) return fail('Supabase is not configured');
-  const { error } = await admin.from(table).upsert(rows);
+  let { error } = await admin.from(table).upsert(rows);
+  if (error && (error.message.includes('semester') || error.message.includes('schema cache') || (error as any).code === 'PGRST204')) {
+    const fallbackRows = rows.map((r: any) => {
+      const copy = { ...r };
+      if (copy.semester) {
+        const semTag = `__SEM:${copy.semester}__`;
+        if (table === 'courses') {
+          copy.description = copy.description ? `${copy.description} ${semTag}` : semTag;
+        } else if (table === 'questions') {
+          copy.explanation = copy.explanation ? `${copy.explanation} ${semTag}` : semTag;
+        }
+      }
+      delete copy.semester;
+      return copy;
+    });
+    const retry = await admin.from(table).upsert(fallbackRows);
+    if (!retry.error) return ok();
+    error = retry.error;
+  }
   return error ? fail(error.message) : ok();
 }
 

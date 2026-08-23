@@ -3,6 +3,12 @@
 -- Run this SQL in your Supabase Dashboard -> SQL Editor -> Click 'Run'
 -- ==============================================================================
 
+-- Quick Migration for Existing Tables (Ensures Semester Column Exists):
+ALTER TABLE IF EXISTS public.courses ADD COLUMN IF NOT EXISTS semester TEXT DEFAULT 'First Semester';
+ALTER TABLE IF EXISTS public.questions ADD COLUMN IF NOT EXISTS semester TEXT DEFAULT 'First Semester';
+ALTER TABLE IF EXISTS public.materials ADD COLUMN IF NOT EXISTS semester TEXT DEFAULT 'First Semester';
+NOTIFY pgrst, 'reload schema';
+
 -- Enable UUID Extension if not enabled
 CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
 

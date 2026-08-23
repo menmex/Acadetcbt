@@ -127,7 +127,16 @@ export function questionFromRow(row: DbRow): Question {
     difficulty: value(row, 'difficulty', 'difficulty', 'Medium'),
     status: value(row, 'status', 'status', 'Published'),
     level: value(row, 'level', 'level'),
-    semester: value(row, 'semester', 'semester'),
+    semester: (() => {
+      let sem = value(row, 'semester', 'semester');
+      if (!sem && row.explanation && typeof row.explanation === 'string') {
+        const match = row.explanation.match(/__SEM:([^ _]+(?: [^ _]+)?)__/i);
+        if (match) sem = match[1];
+      }
+      if (sem && (sem.toLowerCase().includes('first') || sem.toLowerCase() === '1st' || sem === '1')) return 'First Semester';
+      if (sem && (sem.toLowerCase().includes('second') || sem.toLowerCase() === '2nd' || sem === '2')) return 'Second Semester';
+      return sem || undefined;
+    })(),
     session: value(row, 'session', 'session'),
     source: value(row, 'source', 'source', 'Past Question'),
     courseCode: value(row, 'course_code', 'courseCode'),
@@ -230,6 +239,28 @@ export function courseToRow(c: Partial<Course> & { id: string }): DbRow {
 }
 
 export function courseFromRow(row: DbRow): Course {
+  let sem = value(row, 'semester', 'semester', '');
+  if (!sem && row.description && typeof row.description === 'string') {
+    const match = row.description.match(/__SEM:([^ _]+(?: [^ _]+)?)__/i);
+    if (match) {
+      sem = match[1];
+    }
+  }
+
+  // Normalize semester string to "First Semester" or "Second Semester"
+  if (sem && (sem.toLowerCase().includes('first') || sem.toLowerCase() === '1st' || sem === '1')) {
+    sem = 'First Semester';
+  } else if (sem && (sem.toLowerCase().includes('second') || sem.toLowerCase() === '2nd' || sem === '2')) {
+    sem = 'Second Semester';
+  }
+
+  // Clean description of embedded __SEM tag for clean UI display
+  let cleanDesc = row.description;
+  if (typeof cleanDesc === 'string') {
+    cleanDesc = cleanDesc.replace(/__SEM:[^ _]+(?: [^ _]+)?__/g, '').trim();
+    if (!cleanDesc) cleanDesc = null;
+  }
+
   return {
     id: String(row.id),
     code: String(row.code ?? ''),
@@ -237,9 +268,10 @@ export function courseFromRow(row: DbRow): Course {
     universityId: value(row, 'university_id', 'universityId'),
     departmentId: String(value(row, 'department_id', 'departmentId', '')),
     level: value(row, 'level', 'level'),
-    semester: value(row, 'semester', 'semester', 'First'),
+    semester: sem || 'First Semester',
     session: String(value(row, 'session', 'session', '')),
     universityName: row.university_name ?? row.universityName,
+    description: cleanDesc,
     isDisabled: row.is_active === undefined ? row.isDisabled : !row.is_active,
   };
 }
