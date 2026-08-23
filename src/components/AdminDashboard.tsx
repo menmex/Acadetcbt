@@ -4528,10 +4528,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                     onChange={(e) => setGenDifficulty(e.target.value)}
                     className="w-full bg-slate-900 border border-slate-800 text-xs text-white rounded-xl p-2.5 focus:outline-none focus:border-indigo-500 cursor-pointer"
                   >
-                    <option value="Easy">Easy</option>
-                    <option value="Medium">Medium</option>
-                    <option value="Hard">Hard</option>
-                    <option value="Expert">Expert</option>
+                    <option value="Medium">Medium (Standard Exam Level)</option>
                   </select>
                 </div>
 
@@ -4547,6 +4544,9 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                     <option value={15}>15 Questions</option>
                     <option value={20}>20 Questions</option>
                     <option value={30}>30 Questions</option>
+                    <option value={50}>50 Questions (Comprehensive)</option>
+                    <option value={75}>75 Questions</option>
+                    <option value={100}>100 Questions (Mastery)</option>
                   </select>
                 </div>
               </div>

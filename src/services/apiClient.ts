@@ -121,10 +121,11 @@ Requirements for each question:
         contentsParts.push({ text: instructionPrompt });
 
         const response = await ai.models.generateContent({
-          model: 'gemini-3.6-flash',
+          model: 'gemini-3.7-flash',
           contents: { parts: contentsParts },
           config: {
             responseMimeType: 'application/json',
+            maxOutputTokens: 16384,
             responseSchema: {
               type: Type.ARRAY,
               items: {
@@ -154,8 +155,7 @@ Requirements for each question:
           materialText,
           courseCode = 'GST101',
           courseTitle = 'General Course',
-          questionCount = 5,
-          difficulty = 'Medium',
+          questionCount = 50,
           topic = 'Core Fundamentals',
         } = payload;
 
@@ -188,76 +188,102 @@ Requirements for each question:
               optionD: (optDMatch ? optDMatch[1] : 'Option D').trim(),
               correctAnswer: ans,
               explanation: `Standard educational explanation for ${courseCode}: Option (${ans}) is the validated answer.`,
-              difficulty: difficulty || 'Medium',
+              difficulty: 'Medium',
               topic: topic || 'Exam Questions',
             });
           }
         }
 
-        if (parsed.length > 0) {
-          return { success: true, questions: parsed.slice(0, Math.max(questionCount, parsed.length)) };
+        const targetCount = Math.max(1, questionCount || 50);
+        if (parsed.length >= targetCount) {
+          return { success: true, questions: parsed.slice(0, targetCount) };
         }
 
-        // Built-in academic fallback questions for the requested course
-        const fallbackQs = [
+        // Built-in academic matrix generating up to targetCount (50+)
+        const questionThemes = [
           {
-            question: `In the academic study of ${courseCode} (${courseTitle}), what is the primary fundamental objective of the curriculum?`,
-            optionA: `To establish core conceptual foundational mastery and critical academic analytical skills.`,
-            optionB: `To exclusively memorize unverified factual definitions without practical context.`,
-            optionC: `To replace systematic laboratory and empirical observations with conjecture.`,
-            optionD: `To restrict academic inquiries to non-standard experimental methods.`,
-            correctAnswer: 'A',
-            explanation: `${courseCode} emphasizes foundational conceptual mastery, rigorous analytical methods, and practical understanding.`,
-            difficulty: difficulty || 'Medium',
-            topic: topic || 'Core Fundamentals',
+            topic: "Foundational Principles",
+            stem: `In the academic study of ${courseCode} (${courseTitle}), what is the primary fundamental objective of the curriculum?`,
+            a: `To establish core conceptual foundational mastery and critical academic analytical skills.`,
+            b: `To exclusively memorize unverified factual definitions without practical context.`,
+            c: `To replace systematic laboratory and empirical observations with conjecture.`,
+            d: `To restrict academic inquiries to non-standard experimental methods.`,
+            ans: "A",
+            exp: `${courseCode} emphasizes foundational conceptual mastery, rigorous analytical methods, and practical understanding.`,
           },
           {
-            question: `Which principle is central to solving multi-step analytical problems in ${courseCode}?`,
-            optionA: `Arbitrary selection of hypotheses without proof`,
-            optionB: `Systematic step-by-step evaluation of established principles and criteria`,
-            optionC: `Ignoring variable parameters and boundary constraints`,
-            optionD: `Reliance solely on qualitative conjecture`,
-            correctAnswer: 'B',
-            explanation: `Systematic evaluation following established criteria is the standard methodology in ${courseCode}.`,
-            difficulty: difficulty || 'Medium',
-            topic: topic || 'Analytical Problem Solving',
+            topic: "Analytical Problem Solving",
+            stem: `Which principle is central to solving multi-step analytical problems in ${courseCode}?`,
+            a: `Arbitrary selection of hypotheses without mathematical proof`,
+            b: `Systematic step-by-step evaluation of established principles and criteria`,
+            c: `Ignoring variable parameters and boundary constraints`,
+            d: `Reliance solely on qualitative conjecture`,
+            ans: "B",
+            exp: `Systematic evaluation following established criteria is the standard methodology in ${courseCode}.`,
           },
           {
-            question: `When analyzing complex examination questions for ${courseCode}, what is the best strategy for verification?`,
-            optionA: `Eliminate clearly contradictory distractors and verify matching core definitions`,
-            optionB: `Select the longest option without reading the prompt stem`,
-            optionC: `Assume all negative statements are invariably correct`,
-            optionD: `Skip verification of units and operational boundary limits`,
-            correctAnswer: 'A',
-            explanation: `Eliminating illogical distractors and cross-referencing fundamental definitions guarantees high examination accuracy.`,
-            difficulty: difficulty || 'Medium',
-            topic: topic || 'Exam Methodology',
+            topic: "Exam Methodology",
+            stem: `When analyzing complex examination questions for ${courseCode}, what is the best strategy for distractor verification?`,
+            a: `Eliminate clearly contradictory distractors and verify matching core definitions`,
+            b: `Select the longest option without reading the prompt stem`,
+            c: `Assume all negative statements are invariably correct`,
+            d: `Skip verification of units and operational boundary limits`,
+            ans: "A",
+            exp: `Eliminating illogical distractors and cross-referencing fundamental definitions guarantees high examination accuracy.`,
           },
           {
-            question: `Which of the following best defines the relationship between theory and application in ${courseCode}?`,
-            optionA: `Theory provides the governing principles that guide empirical applications and problem solutions`,
-            optionB: `Theory is completely unrelated to practical problem-solving in examinations`,
-            optionC: `Empirical applications operate independently without theoretical frameworks`,
-            optionD: `Theory is only applicable in non-academic settings`,
-            correctAnswer: 'A',
-            explanation: `Theory provides the fundamental framework and mathematical/conceptual principles governing practical applications.`,
-            difficulty: difficulty || 'Medium',
-            topic: topic || 'Theory & Application',
+            topic: "Theory & Application",
+            stem: `Which of the following best defines the relationship between theory and application in ${courseCode}?`,
+            a: `Theory provides the governing principles that guide empirical applications and problem solutions`,
+            b: `Theory is completely unrelated to practical problem-solving in examinations`,
+            c: `Empirical applications operate independently without theoretical frameworks`,
+            d: `Theory is only applicable in non-academic settings`,
+            ans: "A",
+            exp: `Theory provides the fundamental framework and conceptual principles governing practical applications.`,
           },
           {
-            question: `In modern CBT examinations for ${courseCode}, what ensures standard academic assessment accuracy?`,
-            optionA: `Standardized multiple-choice questions with balanced distractors and unambiguous stems`,
-            optionB: `Random subjective grading without standardized scoring criteria`,
-            optionC: `Unpublished answer keys without verification`,
-            optionD: `Inconsistent timing allocations across test sessions`,
-            correctAnswer: 'A',
-            explanation: `Standardized question structures with vetted distractors ensure objective, fair, and reliable academic assessment.`,
-            difficulty: difficulty || 'Medium',
-            topic: topic || 'Assessment Standards',
-          },
+            topic: "Assessment Standards",
+            stem: `In standard university CBT assessments for ${courseCode}, what ensures test reliability and validity?`,
+            a: `Unambiguous question stems, calibrated distractor plausibility, and verified answer keys`,
+            b: `Subjective scoring without explicit grading criteria`,
+            c: `Arbitrary time limits disconnected from question complexity`,
+            d: `Inconsistent categorization of syllabus modules`,
+            ans: "A",
+            exp: `Objective, unambiguous stems with carefully balanced options guarantee high psychometric validity.`,
+          }
         ];
 
-        return { success: true, questions: fallbackQs.slice(0, questionCount) };
+        const allQs = [...parsed];
+        let idx = allQs.length;
+        while (allQs.length < targetCount) {
+          const theme = questionThemes[idx % questionThemes.length];
+          const cycle = Math.floor(idx / questionThemes.length) + 1;
+          const suffix = cycle > 1 ? ` (Part ${cycle})` : "";
+          const pos = idx % 4;
+          let optA = theme.a;
+          let optB = theme.b;
+          let optC = theme.c;
+          let optD = theme.d;
+          let correctKey = "A";
+          if (pos === 1) { optA = theme.b; optB = theme.a; correctKey = "B"; }
+          else if (pos === 2) { optA = theme.c; optB = theme.b; optC = theme.a; correctKey = "C"; }
+          else if (pos === 3) { optA = theme.d; optB = theme.b; optC = theme.c; optD = theme.a; correctKey = "D"; }
+
+          allQs.push({
+            question: `${theme.stem}${suffix}`,
+            optionA: optA,
+            optionB: optB,
+            optionC: optC,
+            optionD: optD,
+            correctAnswer: correctKey,
+            explanation: `${theme.exp} Option (${correctKey}) is the correct standard answer.`,
+            difficulty: 'Medium',
+            topic: `${theme.topic}${suffix}`,
+          });
+          idx++;
+        }
+
+        return { success: true, questions: allQs.slice(0, targetCount) };
       }
     }
   },
@@ -287,7 +313,7 @@ Student's Chosen Answer: ${userAnswer ? `Option ${userAnswer}` : 'Not answered'}
 Explain step-by-step why Option ${correctAnswer} is correct and why the student's answer (if wrong) was mistaken. Keep it concise, engaging, and easy to memorize for exams.`;
 
         const response = await ai.models.generateContent({
-          model: 'gemini-3.6-flash',
+          model: 'gemini-3.7-flash',
           contents: prompt,
         });
 
@@ -327,7 +353,7 @@ Return JSON format with:
 3. "recommendations": Array of 3 bullet points for next steps.`;
 
         const response = await ai.models.generateContent({
-          model: 'gemini-3.6-flash',
+          model: 'gemini-3.7-flash',
           contents: prompt,
           config: {
             responseMimeType: 'application/json',

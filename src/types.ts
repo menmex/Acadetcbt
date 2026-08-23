@@ -107,7 +107,7 @@ export interface Topic {
 
 export type QuestionSource = 'Past Question' | 'Material Generated' | 'SMART Generated' | 'Smart Upload' | 'Manual Admin';
 export type QuestionStatus = 'Draft' | 'Pending' | 'Under Review' | 'Publishing Queue' | 'Published' | 'Rejected';
-export type DifficultyLevel = 'Easy' | 'Medium' | 'Hard' | 'Expert';
+export type DifficultyLevel = 'Medium' | string;
 export type QuestionType = 'MCQ' | 'True or False' | 'Fill in the Blank' | 'Matching';
 
 export interface QuestionVersion {

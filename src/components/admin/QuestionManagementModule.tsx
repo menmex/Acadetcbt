@@ -1007,10 +1007,7 @@ export const QuestionManagementModule: React.FC<QuestionManagementModuleProps> =
                   className="bg-slate-950 border border-slate-800 text-xs text-slate-200 py-2 px-3 rounded-xl focus:outline-none focus:border-amber-500"
                 >
                   <option value="all">All Difficulties</option>
-                  <option value="Easy">Easy</option>
                   <option value="Medium">Medium</option>
-                  <option value="Hard">Hard</option>
-                  <option value="Expert">Expert</option>
                 </select>
 
                 <div className="flex gap-1 ml-auto">
@@ -1404,6 +1401,8 @@ export const QuestionManagementModule: React.FC<QuestionManagementModuleProps> =
                   <option value={20}>20 Questions</option>
                   <option value={30}>30 Questions</option>
                   <option value={50}>50 Questions (Comprehensive)</option>
+                  <option value={75}>75 Questions</option>
+                  <option value={100}>100 Questions (Mastery)</option>
                 </select>
               </div>
 
@@ -1416,9 +1415,7 @@ export const QuestionManagementModule: React.FC<QuestionManagementModuleProps> =
                   onChange={(e) => setSmartDifficulty(e.target.value as any)}
                   className="w-full bg-slate-900 border border-slate-800 p-2 rounded-lg text-xs text-white focus:outline-none focus:border-indigo-500"
                 >
-                  <option value="Easy">Easy (Conceptual / Definitions)</option>
                   <option value="Medium">Medium (Standard Exam Level)</option>
-                  <option value="Hard">Hard (Advanced / Analytical)</option>
                 </select>
               </div>
             </div>
@@ -1811,10 +1808,7 @@ export const QuestionManagementModule: React.FC<QuestionManagementModuleProps> =
                     onChange={(e) => setQDifficulty(e.target.value as any)}
                     className="w-full bg-slate-950 border border-slate-800 p-2.5 rounded-xl text-xs text-white"
                   >
-                    <option value="Easy">Easy</option>
-                    <option value="Medium">Medium</option>
-                    <option value="Hard">Hard</option>
-                    <option value="Expert">Expert</option>
+                    <option value="Medium">Medium (Standard Exam Level)</option>
                   </select>
                 </div>
               </div>
