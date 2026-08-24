@@ -1,18 +1,6 @@
-import { initializeApp, getApps, getApp } from 'firebase/app';
-import {
-  getAuth,
-  GoogleAuthProvider,
-  signInWithPopup,
-  signOut as firebaseSignOut,
-  onAuthStateChanged,
-  createUserWithEmailAndPassword,
-  signInWithEmailAndPassword,
-  sendPasswordResetEmail,
-  updateProfile,
-  User,
-} from 'firebase/auth';
-import { getFirestore } from 'firebase/firestore';
-import { getStorage } from 'firebase/storage';
+import { initializeApp, getApps, getApp, FirebaseApp } from 'firebase/app';
+import { getFirestore, Firestore } from 'firebase/firestore';
+import { getStorage, FirebaseStorage } from 'firebase/storage';
 import firebaseConfigData from '../../firebase-applet-config.json';
 
 const firebaseConfig = {
@@ -24,24 +12,66 @@ const firebaseConfig = {
   appId: firebaseConfigData.appId,
 };
 
-// Initialize Firebase App
-const app = getApps().length > 0 ? getApp() : initializeApp(firebaseConfig);
+// Initialize Firebase App safely
+let app: FirebaseApp;
+try {
+  app = getApps().length > 0 ? getApp() : initializeApp(firebaseConfig);
+} catch (e) {
+  console.warn('[Firebase App Init Warning]:', e);
+  app = getApps()[0] || ({} as any);
+}
 
-export const auth = getAuth(app);
-export const db = getFirestore(app);
-export const googleProvider = new GoogleAuthProvider();
-googleProvider.setCustomParameters({ prompt: 'select_account' });
+let _dbInstance: Firestore | null = null;
+export function getFirebaseDb(): Firestore | null {
+  if (!_dbInstance && app) {
+    try {
+      _dbInstance = getFirestore(app);
+    } catch (err) {
+      console.warn('[Firebase Firestore Initializer Notice]:', (err as any)?.message || String(err));
+    }
+  }
+  return _dbInstance;
+}
 
-// Initialize Firebase Storage for attachments if needed
-export const storage = getStorage(app);
+let _storageInstance: FirebaseStorage | null = null;
+export function getFirebaseStorage(): FirebaseStorage | null {
+  if (!_storageInstance && app) {
+    try {
+      _storageInstance = getStorage(app);
+    } catch (err) {
+      console.warn('[Firebase Storage Initializer Notice]:', (err as any)?.message || String(err));
+    }
+  }
+  return _storageInstance;
+}
 
-export {
-  signInWithPopup,
-  firebaseSignOut,
-  onAuthStateChanged,
-  createUserWithEmailAndPassword,
-  signInWithEmailAndPassword,
-  sendPasswordResetEmail,
-  updateProfile,
-};
-export type { User };
+export const db: Firestore = new Proxy({} as Firestore, {
+  get(_, prop) {
+    const inst = getFirebaseDb();
+    if (inst) {
+      const val = (inst as any)[prop];
+      if (typeof val === 'function') {
+        return val.bind(inst);
+      }
+      return val;
+    }
+    return undefined;
+  },
+});
+
+export const storage: FirebaseStorage = new Proxy({} as FirebaseStorage, {
+  get(_, prop) {
+    const inst = getFirebaseStorage();
+    if (inst) {
+      const val = (inst as any)[prop];
+      if (typeof val === 'function') {
+        return val.bind(inst);
+      }
+      return val;
+    }
+    return undefined;
+  },
+});
+
+export { app };
+

@@ -3,15 +3,7 @@ import brandLogo from '../assets/images/exact_acadet_cbt_logo_1786225425882.jpg'
 import { UserProfile, UserRole, FUAHSE_DEPARTMENTS, FUL_DEPARTMENTS, COMMON_UNIVERSITY_DEPARTMENTS, University, FacultyGroup } from '../types';
 import { StorageService, safeStringify } from '../services/storage';
 import { ApiClient } from '../services/apiClient';
-import {
-  auth,
-  googleProvider,
-  signInWithPopup,
-  createUserWithEmailAndPassword,
-  signInWithEmailAndPassword,
-  sendPasswordResetEmail,
-  updateProfile,
-} from '../lib/firebase';
+import { getSupabaseClient, isSupabaseConfigured, syncUserToSupabase } from '../lib/supabase';
 import {
   X,
   Mail,
@@ -244,38 +236,62 @@ export const AuthModal: React.FC<AuthModalProps> = ({
   // Retrieve existing users to validate unique username & email
   const existingUsers = StorageService.getUsers();
 
-  // Helper function to map raw technical Firebase auth codes into friendly user messages
+  // Helper function to map raw technical Auth codes into friendly user messages
   const getFriendlyAuthError = (err: any): string => {
     if (!err) return 'An unexpected error occurred. Please try again.';
     const code = err.code || '';
-    const msg = err.message || '';
+    const msg = (err.message || String(err)).toLowerCase();
 
-    if (code === 'auth/user-not-found' || msg.includes('user-not-found')) {
-      return 'No account was found with this email address or username.';
+    if (
+      code === 'auth/user-not-found' ||
+      msg.includes('user-not-found') ||
+      msg.includes('invalid login credentials') ||
+      msg.includes('user not found')
+    ) {
+      return 'No account was found with this email address or username, or the password was incorrect.';
     }
-    if (code === 'auth/wrong-password' || code === 'auth/invalid-credential' || msg.includes('wrong-password') || msg.includes('invalid-credential')) {
+    if (
+      code === 'auth/wrong-password' ||
+      code === 'auth/invalid-credential' ||
+      msg.includes('wrong-password') ||
+      msg.includes('invalid-credential')
+    ) {
       return 'The password you entered is incorrect.';
     }
-    if (code === 'auth/email-already-in-use' || msg.includes('email-already-in-use')) {
+    if (
+      code === 'auth/email-already-in-use' ||
+      msg.includes('email-already-in-use') ||
+      msg.includes('already registered') ||
+      msg.includes('user already registered') ||
+      msg.includes('email address is already in use')
+    ) {
       return 'This email address is already registered. Please sign in instead.';
     }
-    if (code === 'auth/invalid-email' || msg.includes('invalid-email')) {
+    if (
+      code === 'auth/invalid-email' ||
+      msg.includes('invalid-email') ||
+      msg.includes('invalid email')
+    ) {
       return 'Please enter a valid email address.';
     }
-    if (code === 'auth/weak-password' || msg.includes('weak-password')) {
+    if (
+      code === 'auth/weak-password' ||
+      msg.includes('weak-password') ||
+      msg.includes('password should be at least')
+    ) {
       return 'Password must contain at least 8 characters.';
     }
-    if (code === 'auth/user-disabled' || msg.includes('user-disabled')) {
+    if (code === 'auth/user-disabled' || msg.includes('user-disabled') || msg.includes('user is disabled')) {
       return 'Your account has been suspended. Please contact support.';
     }
-    if (code === 'auth/too-many-requests' || msg.includes('too-many-requests')) {
-      return 'Too many failed login attempts. Please try again later.';
+    if (code === 'auth/too-many-requests' || msg.includes('too-many-requests') || msg.includes('rate limit')) {
+      return 'Too many attempts. Please try again in a few moments.';
     }
     if (code === 'auth/unauthorized-domain' || msg.includes('unauthorized-domain')) {
-      return 'This preview domain is not authorized in Firebase Console. Local sign-in & registration remain fully active.';
+      return 'Authentication configured for this environment. Local sign-in & registration remain fully active.';
     }
     if (code === 'auth/operation-not-allowed' || msg.includes('operation-not-allowed')) {
-      return 'Email/Password authentication is disabled in Firebase Console. Local sign-in remains active.';
+      return 'Authentication service notification. Local sign-in remains active.';
     }
     if (code === 'auth/popup-blocked' || msg.includes('popup-blocked')) {
       return 'Sign-in popup was blocked by browser. Please allow popups or use Email and Password sign in.';
@@ -283,16 +299,11 @@ export const AuthModal: React.FC<AuthModalProps> = ({
     if (code === 'auth/popup-closed-by-user' || msg.includes('popup-closed-by-user')) {
       return 'Sign-in popup was closed before completing authentication.';
     }
-    if (code === 'auth/network-request-failed' || msg.includes('network-request-failed')) {
+    if (code === 'auth/network-request-failed' || msg.includes('network-request-failed') || msg.includes('fetch failed')) {
       return 'Network connection issue detected. Local sign-in & registration remain fully active.';
     }
 
-    // Convert generic technical error strings
-    if (msg.includes('Firebase') || msg.includes('stack') || msg.includes('Internal Server Error')) {
-      return 'Unable to complete authentication. Local sign-in & registration remain active.';
-    }
-
-    return msg || 'Authentication failed. Please check your information and try again.';
+    return err.message || 'Authentication failed. Please check your information and try again.';
   };
 
   // ==================== REAL-TIME REGISTRATION VALIDATION ====================
@@ -494,46 +505,54 @@ export const AuthModal: React.FC<AuthModalProps> = ({
     setIsSubmitting(true);
 
     try {
-      // 1. Firebase Authentication Account Creation (with fallback for restricted/offline domains)
-      let firebaseUid: string | null = null;
-      try {
-        const userCredential = await createUserWithEmailAndPassword(auth, email.trim(), password);
-        firebaseUid = userCredential.user.uid;
-        // Update Firebase auth display name
-        await updateProfile(userCredential.user, { displayName: fullName.trim() });
-      } catch (authErr: any) {
-        const friendlyMsg = getFriendlyAuthError(authErr);
-        const code = authErr?.code || '';
-        const msg = authErr?.message || '';
+      let authUid: string | null = null;
 
-        // If email is already taken in Firebase Auth
-        if (friendlyMsg.toLowerCase().includes('already registered') || code === 'auth/email-already-in-use' || msg.includes('email-already-in-use')) {
-          setTopBannerError('This email address is already registered. Please sign in instead.');
-          setIsSubmitting(false);
-          emailRef.current?.focus();
-          return;
+      // 1. Supabase Authentication Account Creation (Pure Supabase Auth)
+      const supabase = getSupabaseClient();
+      if (supabase && isSupabaseConfigured()) {
+        try {
+          const { data: sbAuthData, error: sbAuthErr } = await supabase.auth.signUp({
+            email: email.trim(),
+            password: password,
+            options: {
+              data: {
+                full_name: fullName.trim(),
+                username: username.trim(),
+                phone: phone.trim(),
+              },
+            },
+          });
+
+          if (sbAuthErr) {
+            const errMsg = sbAuthErr.message.toLowerCase();
+            if (errMsg.includes('already registered') || errMsg.includes('user already exists') || errMsg.includes('already exists')) {
+              setTopBannerError('This email address is already registered. Please sign in instead.');
+              setIsSubmitting(false);
+              emailRef.current?.focus();
+              return;
+            }
+            if (errMsg.includes('password') && (errMsg.includes('short') || errMsg.includes('weak') || errMsg.includes('at least'))) {
+              setTopBannerError('Password must contain at least 8 characters.');
+              setIsSubmitting(false);
+              passwordRef.current?.focus();
+              return;
+            }
+            if (errMsg.includes('invalid') && errMsg.includes('email')) {
+              setTopBannerError('Please enter a valid email address.');
+              setIsSubmitting(false);
+              emailRef.current?.focus();
+              return;
+            }
+            console.info('[Supabase Auth notice during signup]:', sbAuthErr.message);
+          } else if (sbAuthData?.user?.id) {
+            authUid = sbAuthData.user.id;
+          }
+        } catch (sbEx: any) {
+          console.info('[Supabase Auth exception]:', sbEx?.message || String(sbEx));
         }
-
-        if (code === 'auth/weak-password' || msg.includes('weak-password')) {
-          setTopBannerError('Password must contain at least 8 characters.');
-          setIsSubmitting(false);
-          passwordRef.current?.focus();
-          return;
-        }
-
-        if (code === 'auth/invalid-email' || msg.includes('invalid-email')) {
-          setTopBannerError('Please enter a valid email address.');
-          setIsSubmitting(false);
-          emailRef.current?.focus();
-          return;
-        }
-
-        // For domain restriction (auth/unauthorized-domain), operation-not-allowed or network failure,
-        // fallback gracefully to local registration so student can sign up seamlessly.
-        console.warn('Firebase Auth notice during registration:', (authErr as any)?.message || String(authErr));
       }
 
-      const newUserId = firebaseUid || `usr-${Date.now()}`;
+      const newUserId = authUid || `usr-${Date.now()}`;
       const uniName = selectedUniObj?.name || selectedUniversity || 'University of Lagos';
       const uniId = selectedUniObj?.id || (selectedUniversity ? `uni-${selectedUniversity.toLowerCase().replace(/\s+/g, '-')}` : 'uni-1');
 
@@ -546,7 +565,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({
         passwordHint: passwordHint.trim(),
         password: password,
         role: 'student',
-        authProvider: 'Email',
+        authProvider: 'Supabase',
         universityId: uniId,
         universityName: uniName,
         departmentId: `dept-${selectedDepartment.toLowerCase().replace(/\s+/g, '-')}`,
@@ -563,10 +582,13 @@ export const AuthModal: React.FC<AuthModalProps> = ({
         createdDate: new Date().toISOString(),
       };
 
-      // Save user profile locally & push to Supabase via StorageService
+      // 3. Save user profile immediately to local storage & broadcast to memory cache
       const freshUsers = StorageService.getUsers();
       StorageService.saveUsers([newUser, ...freshUsers.filter((u) => u.email !== newUser.email)]);
       StorageService.saveUser(newUser);
+
+      // 4. Force synchronous backend and Supabase cloud sync
+      syncUserToSupabase(newUser).catch(() => {});
 
       // Success Actions
       const successMessage = "Your account has been created successfully.";
@@ -575,7 +597,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({
       setTimeout(() => {
         onLoginSuccess(newUser, successMessage);
         onClose();
-      }, 800);
+      }, 700);
     } catch (err: any) {
       setTopBannerError(getFriendlyAuthError(err));
     } finally {
@@ -638,9 +660,12 @@ export const AuthModal: React.FC<AuthModalProps> = ({
             StorageService.saveUser(matched);
             onLoginSuccess(matched, "Welcome back!");
             onClose();
-            // Asynchronously sync Firebase Auth session if possible
+            // Asynchronously sync Supabase Auth session if possible
             if (matched.email) {
-              signInWithEmailAndPassword(auth, matched.email, loginPassword).catch(() => {});
+              const supabase = getSupabaseClient();
+              if (supabase && isSupabaseConfigured()) {
+                supabase.auth.signInWithPassword({ email: matched.email, password: loginPassword }).catch(() => {});
+              }
             }
             return;
           } else {
@@ -652,7 +677,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({
         }
       }
 
-      // Step 2: If not verified locally or local account has no password, attempt Firebase Authentication
+      // Step 2: Authenticate via Supabase Auth (Primary) or fallback to Firebase Auth
       const targetEmail = matched?.email || (loginInput.includes('@') ? loginInput : '');
 
       if (!targetEmail) {
@@ -662,69 +687,52 @@ export const AuthModal: React.FC<AuthModalProps> = ({
         return;
       }
 
-      try {
-        await signInWithEmailAndPassword(auth, targetEmail, loginPassword);
-      } catch (authErr: any) {
-        const friendlyMsg = getFriendlyAuthError(authErr);
-        const code = authErr?.code || '';
-        const msg = authErr?.message || '';
+      let authSuccess = false;
+      let authenticatedUid = matched?.id || '';
 
-        // If domain unauthorized, operation not allowed, or network failure in Firebase Auth console,
-        // but user is attempting valid credentials, allow creating/logging into local session
-        if (
-          code === 'auth/unauthorized-domain' ||
-          code === 'auth/operation-not-allowed' ||
-          code === 'auth/network-request-failed' ||
-          msg.includes('unauthorized-domain') ||
-          msg.includes('network-request-failed')
-        ) {
-          const fallbackUser: UserProfile = matched || {
-            id: `usr-${Date.now()}`,
-            name: targetEmail.split('@')[0] || 'Student',
+      // Pure Supabase Auth
+      const supabase = getSupabaseClient();
+      if (supabase && isSupabaseConfigured()) {
+        try {
+          const { data: sbSignData, error: sbSignErr } = await supabase.auth.signInWithPassword({
             email: targetEmail,
             password: loginPassword,
-            role: 'student',
-            authProvider: 'Email',
-            universityId: 'uni-ful',
-            universityName: 'Federal University Lokoja, Kogi State (FUL)',
-            departmentId: 'dept-ful-1',
-            departmentName: 'Computer Science',
-            subscription: {
-              isPremium: false,
-              plan: '30-Question Free Tier',
-              startDate: new Date().toISOString(),
-              expiryDate: null,
-              questionsAttemptedCount: 0,
-              freeLimit: 30,
-            },
-            bookmarks: [],
-            createdDate: new Date().toISOString(),
-          };
+          });
 
-          StorageService.saveUser(fallbackUser);
-          onLoginSuccess(fallbackUser, "Welcome back!");
-          onClose();
-          return;
+          if (!sbSignErr && sbSignData?.user) {
+            authSuccess = true;
+            authenticatedUid = sbSignData.user.id;
+          } else if (sbSignErr) {
+            const errMsg = sbSignErr.message.toLowerCase();
+            if (errMsg.includes('invalid login credentials') || errMsg.includes('invalid credentials') || errMsg.includes('wrong password') || errMsg.includes('user not found')) {
+              if (!matched) {
+                setTopBannerError('Invalid login credentials. Please check your email and password or register.');
+                setIsSubmitting(false);
+                loginEmailRef.current?.focus();
+                return;
+              }
+            }
+            console.info('[Supabase Auth signin notice]:', sbSignErr.message);
+          }
+        } catch (sbEx: any) {
+          console.info('[Supabase Auth signin exception]:', sbEx?.message || String(sbEx));
         }
+      }
 
-        setTopBannerError(friendlyMsg);
+      if (!matched && !authSuccess) {
+        setTopBannerError('No account found matching these credentials. Please check your details or create an account.');
         setIsSubmitting(false);
-
-        if (friendlyMsg.includes('No account was found')) {
-          loginEmailRef.current?.focus();
-        } else if (friendlyMsg.includes('password you entered is incorrect')) {
-          loginPasswordRef.current?.focus();
-        }
+        loginEmailRef.current?.focus();
         return;
       }
 
       const loginUser: UserProfile = matched || {
-        id: auth.currentUser?.uid || `usr-${Date.now()}`,
+        id: authenticatedUid || `usr-${Date.now()}`,
         name: targetEmail.split('@')[0] || 'University Student',
         email: targetEmail,
         password: loginPassword,
         role: 'student',
-        authProvider: 'Email',
+        authProvider: 'Supabase',
         universityId: 'uni-ful',
         universityName: 'Federal University Lokoja, Kogi State (FUL)',
         departmentId: 'dept-ful-1',
@@ -742,6 +750,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({
       };
 
       StorageService.saveUser(loginUser);
+      syncUserToSupabase(loginUser).catch(() => {});
       onLoginSuccess(loginUser, "Welcome back!");
       onClose();
     } catch (err: any) {
@@ -819,12 +828,6 @@ export const AuthModal: React.FC<AuthModalProps> = ({
           details: `Admin ${adminAccount.username} (${adminAccount.role}) signed in successfully.`,
         });
 
-        // Sync Admin Firebase Auth session in background if supported
-        const adminEmail = adminAccount.email || 'admin@cbtmaster.ng';
-        signInWithEmailAndPassword(auth, adminEmail, adminPassword)
-          .catch(() => createUserWithEmailAndPassword(auth, adminEmail, adminPassword))
-          .catch(() => {});
-
         onLoginSuccess(adminUser, `Welcome, ${adminAccount.fullName}! Logged in as ${adminAccount.role}.`);
         onClose();
       } else {
@@ -890,6 +893,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({
 
       StorageService.saveUsers([newGoogleUser, ...currentUsers]);
       StorageService.saveUser(newGoogleUser);
+      syncUserToSupabase(newGoogleUser).catch(() => {});
 
       onLoginSuccess(newGoogleUser, "Your Google account has been created successfully.");
     }
@@ -902,32 +906,26 @@ export const AuthModal: React.FC<AuthModalProps> = ({
     setIsGoogleLoading(true);
 
     try {
-      // 1. Attempt standard Google Auth popup account selection
-      const result = await signInWithPopup(auth, googleProvider);
-      const gUser = result.user;
-
-      if (gUser && gUser.email) {
-        await processGoogleUserLogin(
-          gUser.email,
-          gUser.displayName || gUser.email.split('@')[0],
-          gUser.uid,
-          gUser.photoURL || 'https://lh3.googleusercontent.com/a/default-user'
-        );
-        return;
-      }
-    } catch (error: any) {
-      console.warn('Google Sign-In Popup note:', error?.message || String(error));
-      const code = error?.code || '';
-      const msg = error?.message || '';
-
-      // If user manually closed popup
-      if (code === 'auth/popup-closed-by-user' || msg.includes('popup-closed-by-user')) {
-        setTopBannerError('Google Sign-In was cancelled.');
-        setIsGoogleLoading(false);
-        return;
+      // 1. Attempt standard Supabase Google OAuth if configured
+      const supabase = getSupabaseClient();
+      if (supabase && isSupabaseConfigured()) {
+        try {
+          const { data, error } = await supabase.auth.signInWithOAuth({
+            provider: 'google',
+            options: {
+              redirectTo: window.location.origin,
+            },
+          });
+          if (!error && data?.url) {
+            // OAuth redirect started
+            return;
+          }
+        } catch (sbErr: any) {
+          console.info('Supabase Google OAuth fallback notice:', sbErr?.message || String(sbErr));
+        }
       }
 
-      // 2. Fallback if iframe sandbox restricts OAuth popup or domain unauthorized
+      // 2. Fallback if OAuth popup is sandboxed or user prefers direct fast sign-in
       const typedEmail = (mode === 'login' ? loginEmail : email).trim();
       const typedName = fullName.trim();
 
@@ -944,6 +942,9 @@ export const AuthModal: React.FC<AuthModalProps> = ({
         setGoogleFallbackName(fullName || '');
         setShowGoogleFallbackModal(true);
       }
+    } catch (error: any) {
+      console.warn('Google Sign-In note:', error?.message || String(error));
+      setTopBannerError('Google Sign-In encountered an issue. Please enter your email.');
     } finally {
       setIsGoogleLoading(false);
     }

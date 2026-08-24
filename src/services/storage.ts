@@ -59,7 +59,6 @@ import {
   normalizeAdminRole,
 } from '../utils/rbac';
 
-import { auth } from '../lib/firebase';
 export type Unsubscribe = () => void;
 import {
   getSupabaseClient,
@@ -587,18 +586,16 @@ export function safeClone<T>(obj: T): T {
 }
 
 export function handleDatabaseError(error: unknown, operationType: OperationType, path: string | null) {
+  const currentUser = StorageService.getUser();
   const errInfo: DatabaseErrorInfo = {
     error: typeof error === 'object' && error !== null && 'message' in error ? String((error as any).message) : String(error),
     authInfo: {
-      userId: auth.currentUser?.uid,
-      email: auth.currentUser?.email,
-      emailVerified: auth.currentUser?.emailVerified,
-      isAnonymous: auth.currentUser?.isAnonymous,
-      tenantId: auth.currentUser?.tenantId,
-      providerInfo: auth.currentUser?.providerData?.map((provider) => ({
-        providerId: provider.providerId,
-        email: provider.email,
-      })) || [],
+      userId: currentUser?.id,
+      email: currentUser?.email,
+      emailVerified: true,
+      isAnonymous: false,
+      tenantId: undefined,
+      providerInfo: currentUser?.authProvider ? [{ providerId: currentUser.authProvider, email: currentUser.email || '' }] : [],
     },
     operationType,
     path,

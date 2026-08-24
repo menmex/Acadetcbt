@@ -1,7 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { CheckCircle2, X, AlertTriangle, ArrowLeft } from 'lucide-react';
-import { auth } from './lib/firebase';
-import { onAuthStateChanged, signOut } from 'firebase/auth';
+import { getSupabaseClient } from './lib/supabase';
 import {
   UserProfile,
   Question,
@@ -322,29 +321,29 @@ export default function App() {
     window.addEventListener('focus', handleWindowFocus);
     document.addEventListener('visibilitychange', handleVisibilityChange);
 
-    const unsubscribe = onAuthStateChanged(
-      auth,
-      (firebaseUser) => {
-        if (firebaseUser) {
+    let supabaseAuthSub: { unsubscribe: () => void } | null = null;
+    const supabase = getSupabaseClient();
+    if (supabase) {
+      const { data: authListener } = supabase.auth.onAuthStateChange((event, session) => {
+        if (session?.user) {
+          const userEmail = session.user.email;
           const storedUsers = StorageService.getUsers();
           const matched = storedUsers.find(
-            (u) => u.email?.toLowerCase() === firebaseUser.email?.toLowerCase() || u.googleUserId === firebaseUser.uid
+            (u) => (u.email && userEmail && u.email.toLowerCase() === userEmail.toLowerCase()) || u.id === session.user.id
           );
           if (matched) {
             setCurrentUser(matched);
             StorageService.saveLocalUserOnly(matched);
           }
-        } else {
+        } else if (event === 'SIGNED_OUT') {
           const savedUser = StorageService.getUser();
           if (!savedUser) {
             setCurrentUser(null);
           }
         }
-      },
-      (err) => {
-        console.warn('Firebase Auth state listener notice:', err?.message || err);
-      }
-    );
+      });
+      supabaseAuthSub = authListener?.subscription || null;
+    }
 
     window.addEventListener('storage', debouncedSyncAllData);
     window.addEventListener('cbt_storage_change', debouncedSyncAllData);
@@ -354,7 +353,7 @@ export default function App() {
       clearInterval(cloudSyncInterval);
       window.removeEventListener('focus', handleWindowFocus);
       document.removeEventListener('visibilitychange', handleVisibilityChange);
-      unsubscribe();
+      if (supabaseAuthSub) supabaseAuthSub.unsubscribe();
       window.removeEventListener('storage', debouncedSyncAllData);
       window.removeEventListener('cbt_storage_change', debouncedSyncAllData);
     };
@@ -444,7 +443,9 @@ export default function App() {
   };
 
   const handleLogout = () => {
-    signOut(auth).catch(() => {});
+    try {
+      getSupabaseClient()?.auth.signOut().catch(() => {});
+    } catch {}
     localStorage.removeItem('cbt_admin_token');
     StorageService.clearUserSession();
     setCurrentUser(null);
