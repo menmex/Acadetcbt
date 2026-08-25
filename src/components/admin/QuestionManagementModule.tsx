@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useRef } from 'react';
+import React, { useState, useMemo, useRef, useEffect, useCallback } from 'react';
 import {
   Question,
   University,
@@ -14,6 +14,7 @@ import {
 import { StorageService, safeStringify } from '../../services/storage';
 import type { StorageWriteResult } from '../../services/storage';
 import { ApiClient } from '../../services/apiClient';
+import { BulkQuestionImportModal } from './BulkQuestionImportModal';
 import {
   ACADEMIC_LEVELS,
   ACADEMIC_SEMESTERS,
@@ -150,7 +151,35 @@ export const QuestionManagementModule: React.FC<QuestionManagementModuleProps> =
   const [sortField, setSortField] = useState<'createdDate' | 'question' | 'difficulty'>('createdDate');
   const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('desc');
   const [currentPage, setCurrentPage] = useState(1);
-  const itemsPerPage = 10;
+  const [itemsPerPage, setItemsPerPage] = useState<number>(25);
+
+  // --- Live Cloud Database Stats ---
+  const [dbStats, setDbStats] = useState<{
+    total: number;
+    published: number;
+    pending: number;
+    review: number;
+    queue: number;
+    draft: number;
+    rejected: number;
+  } | null>(null);
+  const [isRefreshingStats, setIsRefreshingStats] = useState(false);
+
+  const fetchLiveDatabaseStats = useCallback(async () => {
+    setIsRefreshingStats(true);
+    try {
+      const stats = await StorageService.fetchQuestionStats();
+      setDbStats(stats);
+    } catch {
+      // Fallback gracefully
+    } finally {
+      setIsRefreshingStats(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    fetchLiveDatabaseStats();
+  }, [fetchLiveDatabaseStats, questions.length]);
 
   // --- Selection & Bulk Operation States ---
   const [selectedQuestionIds, setSelectedQuestionIds] = useState<string[]>([]);
@@ -162,11 +191,6 @@ export const QuestionManagementModule: React.FC<QuestionManagementModuleProps> =
   const [editingQuestion, setEditingQuestion] = useState<Question | null>(null);
   const [viewingQuestion, setViewingQuestion] = useState<Question | null>(null);
   const [isImportModalOpen, setIsImportModalOpen] = useState(false);
-  const [importReport, setImportReport] = useState<{
-    total: number;
-    valid: Question[];
-    errors: { row: number; error: string }[];
-  } | null>(null);
 
   // --- Form States for New/Edit Question (University -> Faculty -> Department -> Level -> Semester -> Course) ---
   const [qHierarchy, setQHierarchy] = useState<AcademicHierarchyValues>({
@@ -837,7 +861,7 @@ export const QuestionManagementModule: React.FC<QuestionManagementModuleProps> =
             <HelpCircle className="w-4 h-4 text-amber-400 group-hover:scale-110 transition-transform" />
           </div>
           <p className="text-2xl font-black text-white">{summary.total.toLocaleString()}</p>
-          <span className="text-[10px] text-slate-500 mt-1 block">Live Database Database</span>
+          <span className="text-[10px] text-slate-500 mt-1 block">Live Cloud Database</span>
         </div>
 
         <div
@@ -1007,10 +1031,37 @@ export const QuestionManagementModule: React.FC<QuestionManagementModuleProps> =
                   className="bg-slate-950 border border-slate-800 text-xs text-slate-200 py-2 px-3 rounded-xl focus:outline-none focus:border-amber-500"
                 >
                   <option value="all">All Difficulties</option>
+                  <option value="Easy">Easy</option>
                   <option value="Medium">Medium</option>
+                  <option value="Hard">Hard</option>
+                  <option value="Expert">Expert</option>
                 </select>
 
-                <div className="flex gap-1 ml-auto">
+                <div className="flex flex-wrap items-center gap-1.5 ml-auto">
+                  <button
+                    onClick={() => setIsImportModalOpen(true)}
+                    className="px-3.5 py-2 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white font-extrabold text-xs rounded-xl flex items-center gap-1.5 cursor-pointer shadow-md transition-all"
+                    title="Import questions from CSV, JSON, or Past Question text dumps"
+                  >
+                    <Upload className="w-3.5 h-3.5" />
+                    <span>Import Questions</span>
+                  </button>
+
+                  <button
+                    onClick={async () => {
+                      setIsRefreshingStats(true);
+                      await StorageService.syncWithCloud(true);
+                      await fetchLiveDatabaseStats();
+                      setIsRefreshingStats(false);
+                    }}
+                    disabled={isRefreshingStats}
+                    className="px-3 py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 font-bold text-xs rounded-xl flex items-center gap-1.5 cursor-pointer transition-all disabled:opacity-50"
+                    title="Refresh live catalog and stats from Supabase Database"
+                  >
+                    <RefreshCw className={`w-3.5 h-3.5 ${isRefreshingStats ? 'animate-spin text-amber-400' : ''}`} />
+                    <span className="hidden sm:inline">Sync DB</span>
+                  </button>
+
                   <button
                     onClick={() => handleExportQuestions('csv')}
                     className="px-3 py-2 bg-emerald-950/60 hover:bg-emerald-900 border border-emerald-500/30 text-emerald-300 font-bold text-xs rounded-xl flex items-center gap-1.5 cursor-pointer"
@@ -1124,9 +1175,11 @@ export const QuestionManagementModule: React.FC<QuestionManagementModuleProps> =
                             </div>
                           </td>
                           <td className="p-4">
-                            <span className="font-extrabold text-amber-400 block">{q.courseCode || 'GST101'}</span>
+                            <span className="font-extrabold text-amber-400 block">
+                              {q.courseCode || courses.find((c) => c.id === q.courseId)?.code || 'GST101'}
+                            </span>
                             <span className="text-[10px] text-slate-400 truncate block max-w-[120px]">
-                              {universities.find((u) => u.id === q.universityId)?.abbreviation || 'FUL'}
+                              {universities.find((u) => u.id === q.universityId)?.abbreviation || universities.find((u) => u.id === q.universityId)?.name || 'General'}
                             </span>
                           </td>
                           <td className="p-4">
@@ -1197,16 +1250,38 @@ export const QuestionManagementModule: React.FC<QuestionManagementModuleProps> =
             </div>
 
             {/* Pagination Controls */}
-            {totalPages > 1 && (
-              <div className="p-4 border-t border-slate-800 flex items-center justify-between text-xs text-slate-400">
+            <div className="p-4 border-t border-slate-800 flex flex-wrap items-center justify-between gap-3 text-xs text-slate-400">
+              <div className="flex items-center gap-3">
                 <span>
-                  Showing {((currentPage - 1) * itemsPerPage) + 1} - {Math.min(currentPage * itemsPerPage, filteredQuestions.length)} of {filteredQuestions.length} questions
+                  Showing {filteredQuestions.length === 0 ? 0 : ((currentPage - 1) * itemsPerPage) + 1} - {Math.min(currentPage * itemsPerPage, filteredQuestions.length)} of {filteredQuestions.length} questions
                 </span>
+                <div className="flex items-center gap-1.5 pl-2 border-l border-slate-800">
+                  <span className="text-[11px] text-slate-500">Per page:</span>
+                  <select
+                    value={itemsPerPage}
+                    onChange={(e) => {
+                      setItemsPerPage(Number(e.target.value));
+                      setCurrentPage(1);
+                    }}
+                    className="bg-slate-950 border border-slate-800 text-[11px] text-slate-200 py-1 px-2 rounded-lg focus:outline-none focus:border-amber-500"
+                  >
+                    <option value={10}>10</option>
+                    <option value={25}>25</option>
+                    <option value={50}>50</option>
+                    <option value={100}>100</option>
+                    <option value={250}>250</option>
+                    <option value={500}>500</option>
+                    <option value={1000}>1000</option>
+                  </select>
+                </div>
+              </div>
+
+              {totalPages > 1 && (
                 <div className="flex items-center gap-2">
                   <button
                     onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
                     disabled={currentPage === 1}
-                    className="p-1.5 bg-slate-800 rounded-lg hover:bg-slate-700 disabled:opacity-40"
+                    className="p-1.5 bg-slate-800 rounded-lg hover:bg-slate-700 disabled:opacity-40 cursor-pointer"
                   >
                     <ChevronLeft className="w-4 h-4" />
                   </button>
@@ -1214,13 +1289,13 @@ export const QuestionManagementModule: React.FC<QuestionManagementModuleProps> =
                   <button
                     onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
                     disabled={currentPage === totalPages}
-                    className="p-1.5 bg-slate-800 rounded-lg hover:bg-slate-700 disabled:opacity-40"
+                    className="p-1.5 bg-slate-800 rounded-lg hover:bg-slate-700 disabled:opacity-40 cursor-pointer"
                   >
                     <ChevronRight className="w-4 h-4" />
                   </button>
                 </div>
-              </div>
-            )}
+              )}
+            </div>
           </div>
         </div>
       )}
@@ -1956,6 +2031,22 @@ export const QuestionManagementModule: React.FC<QuestionManagementModuleProps> =
           </div>
         </div>
       )}
+
+      {/* --- ENTERPRISE BULK QUESTION IMPORT MODAL (CSV / JSON / TEXT) --- */}
+      <BulkQuestionImportModal
+        isOpen={isImportModalOpen}
+        onClose={() => setIsImportModalOpen(false)}
+        universities={universities}
+        faculties={faculties}
+        departments={departments}
+        courses={courses}
+        existingQuestions={questions}
+        onImportComplete={async (newQuestions) => {
+          const updated = [...newQuestions, ...questions];
+          onUpdateQuestions(updated);
+          await fetchLiveDatabaseStats();
+        }}
+      />
     </div>
   );
 };

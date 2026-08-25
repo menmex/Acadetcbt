@@ -13,7 +13,39 @@ import {
 } from './dbMappers';
 
 // Helper to safely extract Supabase credentials from either client or server environment
+let dynamicSupabaseUrl = '';
+let dynamicSupabaseAnonKey = '';
+
+export function setSupabaseConfig(url: string, anonKey: string): void {
+  if (url && anonKey) {
+    dynamicSupabaseUrl = url.trim();
+    dynamicSupabaseAnonKey = anonKey.trim();
+    cachedClient = null; // Reinitialize client with new credentials
+  }
+}
+
+export async function fetchAndInitSupabaseConfig(): Promise<boolean> {
+  try {
+    if (typeof window === 'undefined') return false;
+    const res = await fetch('/api/auth/config');
+    if (res.ok) {
+      const data = await res.json();
+      if (data.supabaseUrl && data.supabaseAnonKey) {
+        setSupabaseConfig(data.supabaseUrl, data.supabaseAnonKey);
+        return true;
+      }
+    }
+  } catch {}
+  return false;
+}
+
+// Automatically trigger config fetch on client load
+if (typeof window !== 'undefined') {
+  fetchAndInitSupabaseConfig().catch(() => {});
+}
+
 const getSupabaseUrl = (): string => {
+  if (dynamicSupabaseUrl) return dynamicSupabaseUrl;
   if (typeof process !== 'undefined' && process.env) {
     if (process.env.SUPABASE_URL) return process.env.SUPABASE_URL;
     if (process.env.VITE_SUPABASE_URL) return process.env.VITE_SUPABASE_URL;
@@ -21,11 +53,13 @@ const getSupabaseUrl = (): string => {
   try {
     const metaEnv = (import.meta as any)?.env;
     if (metaEnv?.VITE_SUPABASE_URL) return metaEnv.VITE_SUPABASE_URL;
+    if (metaEnv?.SUPABASE_URL) return metaEnv.SUPABASE_URL;
   } catch {}
   return '';
 };
 
 const getSupabaseAnonKey = (): string => {
+  if (dynamicSupabaseAnonKey) return dynamicSupabaseAnonKey;
   if (typeof process !== 'undefined' && process.env) {
     if (process.env.SUPABASE_ANON_KEY) return process.env.SUPABASE_ANON_KEY;
     if (process.env.VITE_SUPABASE_ANON_KEY) return process.env.VITE_SUPABASE_ANON_KEY;
@@ -33,6 +67,7 @@ const getSupabaseAnonKey = (): string => {
   try {
     const metaEnv = (import.meta as any)?.env;
     if (metaEnv?.VITE_SUPABASE_ANON_KEY) return metaEnv.VITE_SUPABASE_ANON_KEY;
+    if (metaEnv?.SUPABASE_ANON_KEY) return metaEnv.SUPABASE_ANON_KEY;
   } catch {}
   return '';
 };
@@ -287,11 +322,24 @@ export async function syncQuestionsToSupabase(questions: any[]): Promise<SyncRes
     if (!Array.isArray(questions)) return fail('Questions must be an array');
     if (questions.length === 0) return ok();
     if (typeof window !== 'undefined') {
-      return responseResult(await fetch('/api/catalog/questions', {
-        method: 'POST',
-        headers: getAuthHeaders(),
-        body: JSON.stringify({ questions }),
-      }));
+      // Chunk requests into batches of 250 to ensure reliable network transmission
+      const chunkSize = 250;
+      const allSkipped: SkippedSyncItem[] = [];
+
+      for (let i = 0; i < questions.length; i += chunkSize) {
+        const chunk = questions.slice(i, i + chunkSize);
+        const res = await fetch('/api/catalog/questions', {
+          method: 'POST',
+          headers: getAuthHeaders(),
+          body: JSON.stringify({ questions: chunk }),
+        });
+        const result = await responseResult(res);
+        if (!result.success) return result;
+        if (result.skipped && result.skipped.length > 0) {
+          allSkipped.push(...result.skipped);
+        }
+      }
+      return ok(allSkipped);
     }
     if (getSupabaseAdminClient()) {
       const rows = questions.map((q) => questionToRow({ ...q, id: q.id }));
@@ -304,6 +352,54 @@ export async function syncQuestionsToSupabase(questions: any[]): Promise<SyncRes
     return fail('Supabase is not configured');
   } catch (error) {
     return fail(error);
+  }
+}
+
+export async function fetchAllQuestionsFromSupabase(): Promise<any[]> {
+  try {
+    const client = getSupabaseClient() || getSupabaseAdminClient();
+    if (!client) return [];
+
+    const allQuestions: any[] = [];
+    const pageSize = 1000;
+    let from = 0;
+    let hasMore = true;
+
+    while (hasMore) {
+      const to = from + pageSize - 1;
+      const { data, error } = await client.from('questions').select('*').range(from, to);
+      if (error) {
+        console.warn(`[Supabase] Range fetch note (${from}-${to}):`, error.message);
+        break;
+      }
+      if (data && data.length > 0) {
+        allQuestions.push(...data);
+        if (data.length < pageSize) {
+          hasMore = false;
+        } else {
+          from += pageSize;
+        }
+      } else {
+        hasMore = false;
+      }
+    }
+
+    return allQuestions;
+  } catch (err) {
+    console.error('[Supabase] fetchAllQuestionsFromSupabase error:', err);
+    return [];
+  }
+}
+
+export async function getQuestionsCountFromSupabase(): Promise<number> {
+  try {
+    const client = getSupabaseClient() || getSupabaseAdminClient();
+    if (!client) return 0;
+    const { count, error } = await client.from('questions').select('*', { count: 'exact', head: true });
+    if (error) throw error;
+    return count || 0;
+  } catch {
+    return 0;
   }
 }
 

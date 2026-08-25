@@ -48,6 +48,7 @@ export interface UserProfile {
   isDeleted?: boolean;
   deletedAt?: string;
   referredBy?: string;
+  isGuest?: boolean;
 }
 
 export interface University {
@@ -105,7 +106,7 @@ export interface Topic {
   name: string;
 }
 
-export type QuestionSource = 'Past Question' | 'Material Generated' | 'SMART Generated' | 'Smart Upload' | 'Manual Admin';
+export type QuestionSource = 'Past Question' | 'Material Generated' | 'SMART Generated' | 'Smart Upload' | 'Manual Admin' | 'Bulk Import' | 'Bulk JSON Import' | 'Past Questions Text Import' | string;
 export type QuestionStatus = 'Draft' | 'Pending' | 'Under Review' | 'Publishing Queue' | 'Published' | 'Rejected';
 export type DifficultyLevel = 'Medium' | string;
 export type QuestionType = 'MCQ' | 'True or False' | 'Fill in the Blank' | 'Matching';

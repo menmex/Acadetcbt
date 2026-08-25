@@ -4,6 +4,7 @@ import { UserProfile, UserRole, FUAHSE_DEPARTMENTS, FUL_DEPARTMENTS, COMMON_UNIV
 import { StorageService, safeStringify } from '../services/storage';
 import { ApiClient } from '../services/apiClient';
 import { getSupabaseClient, isSupabaseConfigured, syncUserToSupabase } from '../lib/supabase';
+import { fromRow } from '../lib/dbMappers';
 import {
   X,
   Mail,
@@ -30,11 +31,12 @@ import {
   ChevronDown,
   MapPin,
   Check,
+  Sparkles,
 } from 'lucide-react';
 
 interface AuthModalProps {
   isOpen: boolean;
-  initialMode?: 'register' | 'login' | 'admin' | 'forgot';
+  initialMode?: 'register' | 'login' | 'admin' | 'forgot' | 'guest';
   onClose: () => void;
   onLoginSuccess: (user: UserProfile, message?: string) => void;
   universities?: { id: string; name: string }[];
@@ -48,7 +50,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({
   onLoginSuccess,
   universities: propUniversities,
 }) => {
-  const [mode, setMode] = useState<'register' | 'login' | 'admin' | 'forgot'>(initialMode);
+  const [mode, setMode] = useState<'register' | 'login' | 'admin' | 'forgot' | 'guest'>(initialMode);
   const [role, setRole] = useState<UserRole>('student');
 
   // Input Field Refs for Auto-Focusing First Error Field
@@ -201,6 +203,12 @@ export const AuthModal: React.FC<AuthModalProps> = ({
   const [recoverySuccess, setRecoverySuccess] = useState<string | null>(null);
   const [isVerifying, setIsVerifying] = useState(false);
 
+  // Guest Mode State
+  const [guestName, setGuestName] = useState('');
+  const [guestEmail, setGuestEmail] = useState('');
+  const [guestCourse, setGuestCourse] = useState('');
+  const [guestTouched, setGuestTouched] = useState<Record<string, boolean>>({});
+
   const [newPassword, setNewPassword] = useState('');
   const [confirmNewPassword, setConfirmNewPassword] = useState('');
   const [showCurrentPass, setShowCurrentPass] = useState(false);
@@ -215,12 +223,16 @@ export const AuthModal: React.FC<AuthModalProps> = ({
       setTopBannerSuccess(null);
       setRegTouched({});
       setLoginTouched({});
+      setGuestTouched({});
       setForgotEmail('');
       setForgotHint('');
       setForgotStep('verify');
       setVerifiedUser(null);
       setRecoveryError(null);
       setRecoverySuccess(null);
+      setGuestName('');
+      setGuestEmail('');
+      setGuestCourse('');
       setNewPassword('');
       setConfirmNewPassword('');
       setShowCurrentPass(false);
@@ -605,6 +617,80 @@ export const AuthModal: React.FC<AuthModalProps> = ({
     }
   };
 
+  // ==================== GUEST LOGIN SUBMIT ====================
+  const handleGuestSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setTopBannerError(null);
+    setTopBannerSuccess(null);
+
+    setGuestTouched({ name: true });
+
+    const trimmedName = guestName.trim();
+    if (!trimmedName) {
+      setTopBannerError("Please enter your name or nickname to continue as guest.");
+      return;
+    }
+
+    setIsSubmitting(true);
+    try {
+      // Check if there is an existing guest session to preserve attempted questions counter
+      const existingGuest = StorageService.getUser();
+      let attemptedCount = 0;
+      if (existingGuest?.isGuest && existingGuest.subscription?.questionsAttemptedCount) {
+        attemptedCount = existingGuest.subscription.questionsAttemptedCount;
+      } else {
+        // Also check if any guest attempt count was stored previously in localStorage
+        try {
+          const storedGuestAttempts = localStorage.getItem('cbt_guest_attempt_count');
+          if (storedGuestAttempts) {
+            attemptedCount = parseInt(storedGuestAttempts, 10) || 0;
+          }
+        } catch {}
+      }
+
+      const guestId = `guest_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
+      const cleanEmail = guestEmail.trim() || `guest_${Date.now()}@guest.acadet.local`;
+      const cleanCourse = guestCourse.trim() || 'General Studies';
+
+      const guestUser: UserProfile = {
+        id: guestId,
+        name: trimmedName,
+        username: `guest_${trimmedName.toLowerCase().replace(/[^a-z0-9]/g, '') || 'user'}`,
+        email: cleanEmail,
+        role: 'student',
+        isGuest: true,
+        universityId: 'guest-general',
+        universityName: 'Guest Mode (No University Required)',
+        departmentId: `guest-${cleanCourse.toLowerCase().replace(/\s+/g, '-')}`,
+        departmentName: cleanCourse,
+        subscription: {
+          isPremium: false,
+          plan: 'Guest Free Trial (30 Questions)',
+          startDate: new Date().toISOString(),
+          expiryDate: null,
+          questionsAttemptedCount: attemptedCount,
+          freeLimit: 30,
+        },
+        bookmarks: [],
+        createdDate: new Date().toISOString(),
+      };
+
+      StorageService.saveUser(guestUser);
+
+      const successMsg = `Welcome, ${trimmedName}! You have access to 30 free practice questions.`;
+      setTopBannerSuccess(successMsg);
+
+      setTimeout(() => {
+        onLoginSuccess(guestUser, successMsg);
+        onClose();
+      }, 500);
+    } catch (err: any) {
+      setTopBannerError(getFriendlyAuthError(err));
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
   // ==================== STUDENT LOGIN FORM SUBMIT ====================
   const handleStudentLogin = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -627,14 +713,55 @@ export const AuthModal: React.FC<AuthModalProps> = ({
 
     try {
       const loginInput = loginEmail.trim();
+      const cleanLoginInput = loginInput.toLowerCase();
 
       // Step 1: Check Local Storage for matching user by Email OR Username
       const currentUsers = StorageService.getUsers();
       let matched = currentUsers.find(
         (u) =>
-          (u.email && u.email.toLowerCase() === loginInput.toLowerCase()) ||
-          (u.username && u.username.toLowerCase() === loginInput.toLowerCase())
+          (u.email && u.email.trim().toLowerCase() === cleanLoginInput) ||
+          (u.username && u.username.trim().toLowerCase() === cleanLoginInput)
       );
+
+      // Step 1b: If not found in currentUsers, check permanent local user registry
+      if (!matched) {
+        try {
+          const rawReg = localStorage.getItem('cbt_user_registry');
+          if (rawReg) {
+            const parsed = JSON.parse(rawReg);
+            if (Array.isArray(parsed)) {
+              matched = parsed.find(
+                (u: any) =>
+                  (u.email && u.email.trim().toLowerCase() === cleanLoginInput) ||
+                  (u.username && u.username.trim().toLowerCase() === cleanLoginInput)
+              );
+              if (matched) {
+                StorageService.saveLocalUserOnly(matched);
+              }
+            }
+          }
+        } catch {}
+      }
+
+      // Step 2: If not matched in local cache, query Supabase database for account
+      if (!matched) {
+        const supabase = getSupabaseClient();
+        if (supabase && isSupabaseConfigured()) {
+          try {
+            const { data: dbUser } = await supabase
+              .from('users')
+              .select('*')
+              .or(`email.ilike.${cleanLoginInput},username.ilike.${cleanLoginInput}`)
+              .maybeSingle();
+            if (dbUser) {
+              matched = fromRow.user(dbUser);
+              StorageService.saveLocalUserOnly(matched);
+            }
+          } catch (e) {
+            console.info('[Supabase lookup notice]:', e);
+          }
+        }
+      }
 
       if (matched) {
         // Check account status
@@ -656,7 +783,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({
 
         // Verify password if set locally
         if (matched.password) {
-          if (matched.password === loginPassword) {
+          if (matched.password === loginPassword || matched.password === loginPassword.trim()) {
             StorageService.saveUser(matched);
             onLoginSuccess(matched, "Welcome back!");
             onClose();
@@ -669,28 +796,76 @@ export const AuthModal: React.FC<AuthModalProps> = ({
             }
             return;
           } else {
-            setTopBannerError("The password you entered is incorrect.");
-            setIsSubmitting(false);
-            loginPasswordRef.current?.focus();
-            return;
+            // Check if password was updated in Supabase Auth
+            let remoteAuthSucceeded = false;
+            if (matched.email) {
+              const supabase = getSupabaseClient();
+              if (supabase && isSupabaseConfigured()) {
+                try {
+                  const { data: sbSignData, error: sbSignErr } = await supabase.auth.signInWithPassword({
+                    email: matched.email,
+                    password: loginPassword,
+                  });
+                  if (!sbSignErr && sbSignData?.user) {
+                    remoteAuthSucceeded = true;
+                    matched.password = loginPassword;
+                    StorageService.saveUser(matched);
+                    onLoginSuccess(matched, "Welcome back!");
+                    onClose();
+                    return;
+                  }
+                } catch {}
+              }
+            }
+
+            if (!remoteAuthSucceeded) {
+              setTopBannerError("The password you entered is incorrect.");
+              setIsSubmitting(false);
+              loginPasswordRef.current?.focus();
+              return;
+            }
+          }
+        } else if (matched.email) {
+          // No local password saved, authenticate via Supabase Auth
+          const supabase = getSupabaseClient();
+          if (supabase && isSupabaseConfigured()) {
+            try {
+              const { data: sbSignData, error: sbSignErr } = await supabase.auth.signInWithPassword({
+                email: matched.email,
+                password: loginPassword,
+              });
+              if (!sbSignErr && sbSignData?.user) {
+                matched.password = loginPassword;
+                StorageService.saveUser(matched);
+                onLoginSuccess(matched, "Welcome back!");
+                onClose();
+                return;
+              } else {
+                setTopBannerError("The password you entered is incorrect.");
+                setIsSubmitting(false);
+                loginPasswordRef.current?.focus();
+                return;
+              }
+            } catch (err: any) {
+              setTopBannerError("The password you entered is incorrect.");
+              setIsSubmitting(false);
+              loginPasswordRef.current?.focus();
+              return;
+            }
           }
         }
       }
 
-      // Step 2: Authenticate via Supabase Auth (Primary) or fallback to Firebase Auth
+      // Step 3: If not matched, attempt Supabase Auth direct sign-in with email
       const targetEmail = matched?.email || (loginInput.includes('@') ? loginInput : '');
 
       if (!targetEmail) {
-        setTopBannerError("No account was found with this username. Please check your username or create an account.");
+        setTopBannerError("No account found with this username. Please check your details or create an account.");
         setIsSubmitting(false);
         loginEmailRef.current?.focus();
         return;
       }
 
-      let authSuccess = false;
-      let authenticatedUid = matched?.id || '';
-
-      // Pure Supabase Auth
       const supabase = getSupabaseClient();
       if (supabase && isSupabaseConfigured()) {
         try {
@@ -700,59 +875,67 @@ export const AuthModal: React.FC<AuthModalProps> = ({
           });
 
           if (!sbSignErr && sbSignData?.user) {
-            authSuccess = true;
-            authenticatedUid = sbSignData.user.id;
+            // Check if profile exists in database
+            let loadedProfile: UserProfile | null = null;
+            try {
+              const { data: profileRow } = await supabase
+                .from('users')
+                .select('*')
+                .eq('id', sbSignData.user.id)
+                .maybeSingle();
+              if (profileRow) {
+                loadedProfile = fromRow.user(profileRow);
+              }
+            } catch {}
+
+            const loginUser: UserProfile = loadedProfile || {
+              id: sbSignData.user.id,
+              name: sbSignData.user.user_metadata?.full_name || targetEmail.split('@')[0] || 'University Student',
+              username: sbSignData.user.user_metadata?.username || targetEmail.split('@')[0] || 'student',
+              email: targetEmail,
+              password: loginPassword,
+              role: 'student',
+              authProvider: 'Supabase',
+              universityId: 'uni-ful',
+              universityName: 'Federal University Lokoja, Kogi State (FUL)',
+              departmentId: 'dept-ful-1',
+              departmentName: 'Computer Science',
+              subscription: {
+                isPremium: false,
+                plan: '30-Question Free Tier',
+                startDate: new Date().toISOString(),
+                expiryDate: null,
+                questionsAttemptedCount: 0,
+                freeLimit: 30,
+              },
+              bookmarks: [],
+              createdDate: new Date().toISOString(),
+            };
+
+            loginUser.password = loginPassword;
+            StorageService.saveUser(loginUser);
+            syncUserToSupabase(loginUser).catch(() => {});
+            onLoginSuccess(loginUser, "Welcome back!");
+            onClose();
+            return;
           } else if (sbSignErr) {
             const errMsg = sbSignErr.message.toLowerCase();
             if (errMsg.includes('invalid login credentials') || errMsg.includes('invalid credentials') || errMsg.includes('wrong password') || errMsg.includes('user not found')) {
-              if (!matched) {
-                setTopBannerError('Invalid login credentials. Please check your email and password or register.');
-                setIsSubmitting(false);
-                loginEmailRef.current?.focus();
-                return;
-              }
+              setTopBannerError('Invalid login credentials. Please check your email and password or register.');
+              setIsSubmitting(false);
+              loginEmailRef.current?.focus();
+              return;
             }
-            console.info('[Supabase Auth signin notice]:', sbSignErr.message);
           }
         } catch (sbEx: any) {
           console.info('[Supabase Auth signin exception]:', sbEx?.message || String(sbEx));
         }
       }
 
-      if (!matched && !authSuccess) {
-        setTopBannerError('No account found matching these credentials. Please check your details or create an account.');
-        setIsSubmitting(false);
-        loginEmailRef.current?.focus();
-        return;
-      }
-
-      const loginUser: UserProfile = matched || {
-        id: authenticatedUid || `usr-${Date.now()}`,
-        name: targetEmail.split('@')[0] || 'University Student',
-        email: targetEmail,
-        password: loginPassword,
-        role: 'student',
-        authProvider: 'Supabase',
-        universityId: 'uni-ful',
-        universityName: 'Federal University Lokoja, Kogi State (FUL)',
-        departmentId: 'dept-ful-1',
-        departmentName: 'Computer Science',
-        subscription: {
-          isPremium: false,
-          plan: '30-Question Free Tier',
-          startDate: new Date().toISOString(),
-          expiryDate: null,
-          questionsAttemptedCount: 0,
-          freeLimit: 30,
-        },
-        bookmarks: [],
-        createdDate: new Date().toISOString(),
-      };
-
-      StorageService.saveUser(loginUser);
-      syncUserToSupabase(loginUser).catch(() => {});
-      onLoginSuccess(loginUser, "Welcome back!");
-      onClose();
+      setTopBannerError('No account found matching these credentials. Please check your details or create an account.');
+      setIsSubmitting(false);
+      loginEmailRef.current?.focus();
+      return;
     } catch (err: any) {
       setTopBannerError(getFriendlyAuthError(err));
     } finally {
@@ -1516,17 +1699,17 @@ export const AuthModal: React.FC<AuthModalProps> = ({
             /* Mode: Student Login */
             <form onSubmit={handleStudentLogin} className="space-y-4" noValidate>
               
-              {/* Login Email Address */}
+              {/* Login Identifier (Username or Email) */}
               <div>
                 <label className="block text-xs font-medium text-slate-300 mb-1">
-                  Student Email Address <span className="text-rose-400">*</span>
+                  Username or Email Address <span className="text-rose-400">*</span>
                 </label>
                 <div className="relative">
-                  <Mail className="w-4 h-4 text-slate-500 absolute left-3 top-3" />
+                  <User className="w-4 h-4 text-slate-500 absolute left-3 top-3" />
                   <input
                     ref={loginEmailRef}
-                    type="email"
-                    placeholder="student@university.edu.ng"
+                    type="text"
+                    placeholder="Enter username or email address"
                     value={loginEmail}
                     onChange={(e) => {
                       setLoginEmail(e.target.value);
@@ -1606,6 +1789,116 @@ export const AuthModal: React.FC<AuthModalProps> = ({
                   </>
                 ) : (
                   <span>Sign In as Student</span>
+                )}
+              </button>
+            </form>
+          ) : mode === 'guest' ? (
+            /* Mode: Guest Access */
+            <form onSubmit={handleGuestSubmit} className="space-y-3.5" noValidate>
+              <div className="bg-emerald-500/10 border border-emerald-500/30 rounded-xl p-3 text-xs text-emerald-300">
+                <div className="flex items-center gap-2 font-bold mb-1">
+                  <Sparkles className="w-4 h-4 text-emerald-400 shrink-0" />
+                  <span>Guest Access Mode</span>
+                </div>
+                <p className="text-[11px] text-slate-300 leading-relaxed">
+                  Enjoy instant practice access with <strong>30 free questions</strong>. No university credentials or password required!
+                </p>
+              </div>
+
+              {/* Guest Full Name / Nickname */}
+              <div>
+                <label className="block text-xs font-medium text-slate-300 mb-1">
+                  Name or Nickname <span className="text-rose-400">*</span>
+                </label>
+                <div className="relative">
+                  <User className="w-4 h-4 text-slate-500 absolute left-3 top-3" />
+                  <input
+                    type="text"
+                    required
+                    placeholder="e.g. Alex or Future Scholar"
+                    value={guestName}
+                    onChange={(e) => {
+                      setGuestName(e.target.value);
+                      setGuestTouched((prev) => ({ ...prev, name: true }));
+                      if (topBannerError) setTopBannerError(null);
+                    }}
+                    className={`w-full pl-9 pr-3 py-2.5 bg-slate-950 border rounded-xl text-xs text-slate-100 focus:outline-none transition-all ${
+                      guestTouched.name && !guestName.trim()
+                        ? 'border-rose-500 bg-rose-500/5 focus:border-rose-500'
+                        : 'border-slate-800 focus:border-emerald-500'
+                    }`}
+                  />
+                </div>
+                {guestTouched.name && !guestName.trim() && (
+                  <p className="text-[11px] text-rose-400 mt-1 flex items-center gap-1">
+                    <AlertCircle className="w-3 h-3 shrink-0" />
+                    <span>Please enter a name or nickname</span>
+                  </p>
+                )}
+              </div>
+
+              {/* Guest Optional Email */}
+              <div>
+                <div className="flex items-center justify-between mb-1">
+                  <label className="text-xs font-medium text-slate-300">
+                    Email Address <span className="text-slate-500 font-normal">(Optional)</span>
+                  </label>
+                  <span className="text-[10px] text-slate-500">For saving trial progress</span>
+                </div>
+                <div className="relative">
+                  <Mail className="w-4 h-4 text-slate-500 absolute left-3 top-3" />
+                  <input
+                    type="email"
+                    placeholder="optional@example.com"
+                    value={guestEmail}
+                    onChange={(e) => {
+                      setGuestEmail(e.target.value);
+                      if (topBannerError) setTopBannerError(null);
+                    }}
+                    className="w-full pl-9 pr-3 py-2.5 bg-slate-950 border border-slate-800 focus:border-emerald-500 rounded-xl text-xs text-slate-100 focus:outline-none transition-all"
+                  />
+                </div>
+              </div>
+
+              {/* Guest Preferred Subject / Course */}
+              <div>
+                <div className="flex items-center justify-between mb-1">
+                  <label className="text-xs font-medium text-slate-300">
+                    Preferred Course / Area of Interest <span className="text-slate-500 font-normal">(Optional)</span>
+                  </label>
+                </div>
+                <div className="relative">
+                  <BookOpen className="w-4 h-4 text-slate-500 absolute left-3 top-3" />
+                  <input
+                    type="text"
+                    placeholder="e.g. Computer Science, Medicine, Mathematics"
+                    value={guestCourse}
+                    onChange={(e) => {
+                      setGuestCourse(e.target.value);
+                      if (topBannerError) setTopBannerError(null);
+                    }}
+                    className="w-full pl-9 pr-3 py-2.5 bg-slate-950 border border-slate-800 focus:border-emerald-500 rounded-xl text-xs text-slate-100 focus:outline-none transition-all"
+                  />
+                </div>
+              </div>
+
+              {/* Guest Submit Button */}
+              <button
+                type="submit"
+                disabled={isSubmitting}
+                className="w-full py-3.5 bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 text-white font-bold text-xs rounded-xl shadow-xl shadow-emerald-600/25 transition-all flex items-center justify-center gap-2 cursor-pointer active:scale-[0.99]"
+                id="guest-submit-btn"
+              >
+                {isSubmitting ? (
+                  <>
+                    <Loader2 className="w-4 h-4 animate-spin text-white" />
+                    <span>Entering Guest Mode...</span>
+                  </>
+                ) : (
+                  <>
+                    <span>Start 30-Question Free Practice</span>
+                    <ArrowRight className="w-4 h-4" />
+                  </>
                 )}
               </button>
             </form>
@@ -2242,11 +2535,29 @@ export const AuthModal: React.FC<AuthModalProps> = ({
             </form>
           )}
 
-          {/* Or Continue With Google */}
+          {/* Or Continue With Google and Guest Mode */}
           {mode !== 'forgot' && mode !== 'admin' && (
-            <div className="mt-4 border-t border-slate-800/80 pt-4 text-center">
-              <p className="text-[11px] font-semibold text-slate-500 mb-3 tracking-wider">OR CONTINUE WITH</p>
+            <div className="mt-4 border-t border-slate-800/80 pt-4 text-center space-y-2.5">
+              <p className="text-[11px] font-semibold text-slate-500 mb-2 tracking-wider">OR CONTINUE WITH</p>
 
+              {/* Guest Mode Quick Button */}
+              {mode !== 'guest' && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setMode('guest');
+                    setTopBannerError(null);
+                    setTopBannerSuccess(null);
+                  }}
+                  className="w-full py-2.5 bg-emerald-500/10 hover:bg-emerald-500/20 border border-emerald-500/30 hover:border-emerald-500/50 text-xs font-bold text-emerald-300 rounded-xl flex items-center justify-center gap-2 transition-all cursor-pointer shadow-sm active:scale-[0.99]"
+                  id="continue-as-guest-btn"
+                >
+                  <Sparkles className="w-4 h-4 text-emerald-400" />
+                  <span>Continue as Guest (30 Free Questions)</span>
+                </button>
+              )}
+
+              {/* Google Sign-In */}
               <button
                 type="button"
                 onClick={handleGoogleSignIn}
@@ -2304,6 +2615,21 @@ export const AuthModal: React.FC<AuthModalProps> = ({
                   className="text-indigo-400 font-bold hover:underline ml-1 cursor-pointer"
                 >
                   Create Account
+                </button>
+              </p>
+            ) : mode === 'guest' ? (
+              <p>
+                Ready to save progress permanently?{' '}
+                <button
+                  type="button"
+                  onClick={() => {
+                    setMode('register');
+                    setTopBannerError(null);
+                    setTopBannerSuccess(null);
+                  }}
+                  className="text-indigo-400 font-bold hover:underline ml-1 cursor-pointer"
+                >
+                  Create Student Account
                 </button>
               </p>
             ) : mode === 'admin' ? (

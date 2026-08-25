@@ -27,6 +27,7 @@ interface StudentDashboardProps {
   onNavigate: (tab: string) => void;
   onOpenSubscribe: () => void;
   onOpenEditProfile?: () => void;
+  onOpenSignUp?: () => void;
 }
 
 export const StudentDashboard: React.FC<StudentDashboardProps> = ({
@@ -35,7 +36,9 @@ export const StudentDashboard: React.FC<StudentDashboardProps> = ({
   onNavigate,
   onOpenSubscribe,
   onOpenEditProfile,
+  onOpenSignUp,
 }) => {
+  const isGuest = user?.isGuest ?? false;
   const isPremium = user?.subscription?.isPremium ?? false;
   const questionsUsed = user?.subscription?.questionsAttemptedCount ?? 0;
   const freeLimit = user?.subscription?.freeLimit ?? 30;
@@ -164,21 +167,32 @@ export const StudentDashboard: React.FC<StudentDashboardProps> = ({
                   </div>
                   <div>
                     <span className="font-extrabold text-amber-300 uppercase tracking-wider text-[10px] bg-amber-500/10 px-2 py-0.5 rounded border border-amber-500/20">
-                      Free Trial Warning: 80% Reached
+                      {isGuest ? 'Guest Free Trial: 80% Used' : 'Free Trial Warning: 80% Reached'}
                     </span>
                     <p className="text-slate-200 font-medium mt-1">
                       You have completed <strong>{questionsUsed} of {freeLimit}</strong> free questions (80% used). Only <strong>{freeRemaining} questions remaining</strong>!
                     </p>
                   </div>
                 </div>
-                <button
-                  onClick={onOpenSubscribe}
-                  className="px-4 py-2.5 bg-gradient-to-r from-amber-500 to-indigo-600 hover:from-amber-400 hover:to-indigo-500 text-white font-bold rounded-xl shadow-lg shrink-0 cursor-pointer flex items-center gap-1.5"
-                  id="dashboard-80-alert-upgrade-btn"
-                >
-                  <Crown className="w-3.5 h-3.5" />
-                  Upgrade to Premium
-                </button>
+                {isGuest && onOpenSignUp ? (
+                  <button
+                    onClick={onOpenSignUp}
+                    className="px-4 py-2.5 bg-gradient-to-r from-emerald-600 to-indigo-600 hover:from-emerald-500 hover:to-indigo-500 text-white font-bold rounded-xl shadow-lg shrink-0 cursor-pointer flex items-center gap-1.5"
+                    id="dashboard-80-alert-create-btn"
+                  >
+                    <Sparkles className="w-3.5 h-3.5 text-emerald-200" />
+                    Create Student Account
+                  </button>
+                ) : (
+                  <button
+                    onClick={onOpenSubscribe}
+                    className="px-4 py-2.5 bg-gradient-to-r from-amber-500 to-indigo-600 hover:from-amber-400 hover:to-indigo-500 text-white font-bold rounded-xl shadow-lg shrink-0 cursor-pointer flex items-center gap-1.5"
+                    id="dashboard-80-alert-upgrade-btn"
+                  >
+                    <Crown className="w-3.5 h-3.5" />
+                    Upgrade to Premium
+                  </button>
+                )}
               </div>
             )}
 
@@ -191,21 +205,34 @@ export const StudentDashboard: React.FC<StudentDashboardProps> = ({
                   </div>
                   <div>
                     <span className="font-extrabold text-rose-300 uppercase tracking-wider text-[10px] bg-rose-500/10 px-2 py-0.5 rounded border border-rose-500/20">
-                      Free Trial Expired: 100% Limit Reached
+                      {isGuest ? 'Guest Free Trial Complete: 30 Questions Used' : 'Free Trial Expired: 100% Limit Reached'}
                     </span>
                     <p className="text-rose-100 font-medium mt-1">
-                      Your free trial limit has been reached ({questionsUsed}/{freeLimit} questions). Subscribe to Premium to continue practicing.
+                      {isGuest
+                        ? `You have used all ${freeLimit} free guest questions. Create a Student Account to save your test history and continue practicing.`
+                        : `Your free trial limit has been reached (${questionsUsed}/${freeLimit} questions). Subscribe to Premium to continue practicing.`}
                     </p>
                   </div>
                 </div>
-                <button
-                  onClick={onOpenSubscribe}
-                  className="px-4 py-2.5 bg-gradient-to-r from-amber-500 to-indigo-600 hover:from-amber-400 hover:to-indigo-500 text-white font-bold rounded-xl shadow-lg shrink-0 cursor-pointer flex items-center gap-1.5"
-                  id="dashboard-100-alert-upgrade-btn"
-                >
-                  <Crown className="w-3.5 h-3.5 text-amber-200" />
-                  Upgrade to Premium
-                </button>
+                {isGuest && onOpenSignUp ? (
+                  <button
+                    onClick={onOpenSignUp}
+                    className="px-4 py-2.5 bg-gradient-to-r from-emerald-600 to-indigo-600 hover:from-emerald-500 hover:to-indigo-500 text-white font-bold rounded-xl shadow-lg shrink-0 cursor-pointer flex items-center gap-1.5"
+                    id="dashboard-100-alert-create-btn"
+                  >
+                    <Sparkles className="w-3.5 h-3.5 text-emerald-200" />
+                    Create Student Account
+                  </button>
+                ) : (
+                  <button
+                    onClick={onOpenSubscribe}
+                    className="px-4 py-2.5 bg-gradient-to-r from-amber-500 to-indigo-600 hover:from-amber-400 hover:to-indigo-500 text-white font-bold rounded-xl shadow-lg shrink-0 cursor-pointer flex items-center gap-1.5"
+                    id="dashboard-100-alert-upgrade-btn"
+                  >
+                    <Crown className="w-3.5 h-3.5 text-amber-200" />
+                    Upgrade to Premium
+                  </button>
+                )}
               </div>
             )}
           </div>

@@ -3206,37 +3206,64 @@ app.post("/api/supabase/migrate-seed", requireAdminPermission('manage_settings')
 // CENTRAL DATABASE CATALOG & SYNC REST API ENDPOINTS
 // =========================================================================
 
+// Helper to paginate through Supabase PostgREST tables to overcome the default 1000-row limit
+async function fetchAllRowsFromTable(supabase: any, table: string, select: string = "*"): Promise<any[]> {
+  const allRows: any[] = [];
+  const pageSize = 1000;
+  let from = 0;
+  let hasMore = true;
+
+  while (hasMore) {
+    const to = from + pageSize - 1;
+    const { data, error } = await supabase.from(table).select(select).range(from, to);
+    if (error) {
+      console.warn(`[Supabase] Notice querying ${table} (${from}-${to}):`, error.message);
+      break;
+    }
+    if (data && data.length > 0) {
+      allRows.push(...data);
+      if (data.length < pageSize) {
+        hasMore = false;
+      } else {
+        from += pageSize;
+      }
+    } else {
+      hasMore = false;
+    }
+  }
+
+  return allRows;
+}
+
 // Public / Authenticated Route: Get all catalog entities from Supabase / Firestore
 app.get("/api/catalog/all", async (_req, res) => {
   try {
     const supabase = getSupabaseAdminClient();
     if (supabase && isSupabaseConfigured()) {
       try {
-        const results = await Promise.all([
-          supabase.from("universities").select("*"),
-          supabase.from("courses").select("*"),
-          supabase.from("departments").select("*"),
-          supabase.from("faculties").select("*"),
-          supabase.from("questions").select("*"),
-          supabase.from("materials").select("*"),
-          supabase.from("subscription_plans").select("*"),
-          supabase.from("users").select("*"),
-          supabase.from("payments").select("*"),
-          supabase.from("system_configs").select("*"),
+        const [
+          sbUnis,
+          sbCourses,
+          sbDepts,
+          sbFacs,
+          sbQuestions,
+          sbMaterials,
+          sbPlans,
+          sbUsers,
+          sbPayments,
+          sbConfigs,
+        ] = await Promise.all([
+          fetchAllRowsFromTable(supabase, "universities"),
+          fetchAllRowsFromTable(supabase, "courses"),
+          fetchAllRowsFromTable(supabase, "departments"),
+          fetchAllRowsFromTable(supabase, "faculties"),
+          fetchAllRowsFromTable(supabase, "questions"),
+          fetchAllRowsFromTable(supabase, "materials"),
+          fetchAllRowsFromTable(supabase, "subscription_plans"),
+          fetchAllRowsFromTable(supabase, "users"),
+          fetchAllRowsFromTable(supabase, "payments"),
+          fetchAllRowsFromTable(supabase, "system_configs"),
         ]);
-        const firstError = results.find((result) => result.error);
-        if (firstError?.error) throw new Error(firstError.error.message);
-        const [unisResult, coursesResult, deptsResult, facsResult, questionsResult, materialsResult, plansResult, usersResult, paymentsResult, configsResult] = results;
-        const sbUnis = unisResult.data;
-        const sbCourses = coursesResult.data;
-        const sbDepts = deptsResult.data;
-        const sbFacs = facsResult.data;
-        const sbQuestions = questionsResult.data;
-        const sbMaterials = materialsResult.data;
-        const sbPlans = plansResult.data;
-        const sbUsers = usersResult.data;
-        const sbPayments = paymentsResult.data;
-        const sbConfigs = configsResult.data;
 
         if (sbUnis || sbCourses || sbQuestions || sbPlans) {
           const universities = (sbUnis || []).map(universityFromRow);
@@ -3268,6 +3295,7 @@ app.get("/api/catalog/all", async (_req, res) => {
             users,
             payments,
             signupFaculties,
+            totalQuestions: questions.length,
           });
         }
       } catch (sbErr) {
@@ -3286,10 +3314,120 @@ app.get("/api/catalog/all", async (_req, res) => {
       plans: [],
       users: [],
       payments: [],
+      totalQuestions: 0,
     });
   } catch (err: any) {
     console.warn("[Catalog API] Warning in /api/catalog/all:", err);
     return res.status(500).json({ success: false, error: err.message || "Failed to fetch catalog." });
+  }
+});
+
+// Dedicated Questions API with pagination and exact counts
+app.get("/api/questions", async (req, res) => {
+  try {
+    const supabase = getSupabaseAdminClient();
+    if (!supabase || !isSupabaseConfigured()) {
+      return res.json({ success: true, questions: [], total: 0, page: 1, limit: 50, totalPages: 0 });
+    }
+
+    const page = Math.max(1, parseInt(String(req.query.page || '1'), 10) || 1);
+    const limitParam = String(req.query.limit || '50');
+    const isAll = limitParam.toLowerCase() === 'all';
+    const limit = isAll ? 50000 : Math.min(500, Math.max(1, parseInt(limitParam, 10) || 50));
+    const offset = (page - 1) * limit;
+
+    const { universityId, courseId, status, difficulty, search } = req.query;
+
+    let countQuery = supabase.from("questions").select("*", { count: "exact", head: true });
+    let dataQuery = supabase.from("questions").select("*");
+
+    if (universityId && universityId !== 'all') {
+      countQuery = countQuery.eq('university_id', String(universityId));
+      dataQuery = dataQuery.eq('university_id', String(universityId));
+    }
+    if (courseId && courseId !== 'all') {
+      countQuery = countQuery.eq('course_id', String(courseId));
+      dataQuery = dataQuery.eq('course_id', String(courseId));
+    }
+    if (status && status !== 'all') {
+      countQuery = countQuery.eq('status', String(status));
+      dataQuery = dataQuery.eq('status', String(status));
+    }
+    if (difficulty && difficulty !== 'all') {
+      countQuery = countQuery.eq('difficulty', String(difficulty));
+      dataQuery = dataQuery.eq('difficulty', String(difficulty));
+    }
+    if (search && String(search).trim()) {
+      const s = String(search).trim();
+      dataQuery = dataQuery.or(`question.ilike.%${s}%,explanation.ilike.%${s}%,id.ilike.%${s}%`);
+    }
+
+    let rawRows: any[] = [];
+    const { count } = await countQuery;
+
+    if (isAll) {
+      rawRows = await fetchAllRowsFromTable(supabase, "questions");
+    } else {
+      const { data, error: dataErr } = await dataQuery.order('created_at', { ascending: false }).range(offset, offset + limit - 1);
+      if (dataErr) throw new Error(dataErr.message);
+      rawRows = data || [];
+    }
+
+    const questions = rawRows.map(questionFromRow);
+    const total = typeof count === 'number' ? count : questions.length;
+    const totalPages = Math.ceil(total / limit) || 1;
+
+    return res.json({
+      success: true,
+      questions,
+      total,
+      page,
+      limit,
+      totalPages,
+    });
+  } catch (err: any) {
+    return res.status(500).json({ success: false, error: err.message || "Failed to fetch questions." });
+  }
+});
+
+// Dedicated Questions Live Statistics Endpoint
+app.get("/api/questions/stats", async (_req, res) => {
+  try {
+    const supabase = getSupabaseAdminClient();
+    if (!supabase || !isSupabaseConfigured()) {
+      return res.json({ success: true, total: 0, published: 0, pending: 0, review: 0, queue: 0, draft: 0, rejected: 0 });
+    }
+
+    const [
+      { count: total },
+      { count: published },
+      { count: pending },
+      { count: review },
+      { count: queue },
+      { count: draft },
+      { count: rejected },
+    ] = await Promise.all([
+      supabase.from("questions").select("*", { count: "exact", head: true }),
+      supabase.from("questions").select("*", { count: "exact", head: true }).eq("status", "Published"),
+      supabase.from("questions").select("*", { count: "exact", head: true }).eq("status", "Pending"),
+      supabase.from("questions").select("*", { count: "exact", head: true }).eq("status", "Under Review"),
+      supabase.from("questions").select("*", { count: "exact", head: true }).eq("status", "Publishing Queue"),
+      supabase.from("questions").select("*", { count: "exact", head: true }).eq("status", "Draft"),
+      supabase.from("questions").select("*", { count: "exact", head: true }).eq("status", "Rejected"),
+    ]);
+
+    return res.json({
+      success: true,
+      total: total || 0,
+      published: published || 0,
+      pending: pending || 0,
+      review: review || 0,
+      queue: queue || 0,
+      draft: draft || 0,
+      rejected: rejected || 0,
+    });
+  } catch (err: any) {
+    return res.status(500).json({ success: false, error: err.message || "Failed to fetch question stats." });
   }
 });
 
@@ -3400,12 +3538,13 @@ app.post("/api/catalog/questions", requireAdminPermission('manage_questions'), a
     }
     const { valid, skipped } = validateQuestionBatch(rawItems as QuestionPayload[]);
     if (skipped.length > 0) {
-      console.warn('[Supabase] Skipped invalid catalog questions:', skipped);
+      console.warn('[Supabase] Skipped invalid catalog questions:', skipped.length);
     }
     const supabase = getSupabaseAdminClient();
+    let totalInDb = 0;
     if (supabase && valid.length > 0) {
       const records = valid.map((q) => questionToRow(q as Partial<Question> & { id: string }));
-      // Split into batches of 100
+      // Split into batches of 100 to prevent payload timeout or DB connection drops
       for (let i = 0; i < records.length; i += 100) {
         const batch = records.slice(i, i + 100);
         let { error } = await supabase.from("questions").upsert(batch);
@@ -3428,8 +3567,20 @@ app.post("/api/catalog/questions", requireAdminPermission('manage_questions'), a
         }
         if (error) return res.status(500).json({ success: false, error: error.message, skipped });
       }
+
+      // Fetch live exact count from database
+      const { count } = await supabase.from("questions").select("*", { count: "exact", head: true });
+      totalInDb = count || 0;
     }
-    return res.json({ success: true, count: valid.length, skipped });
+    return res.json({
+      success: true,
+      count: valid.length,
+      totalReceived: rawItems.length,
+      totalValid: valid.length,
+      totalInserted: valid.length,
+      totalInDatabase: totalInDb,
+      skipped,
+    });
   } catch (err: any) {
     return res.status(500).json({ success: false, error: err.message || "Failed to save question(s)." });
   }
@@ -3696,12 +3847,24 @@ app.post("/api/payments/sync", async (req, res) => {
 
 app.post("/api/users/sync", async (req, res) => {
   try {
-    const { user, users } = req.body;
-    const items = users || (user ? [user] : []);
+    const { user, users } = req.body || {};
+    const items = users || (user ? [user] : (req.body?.id || req.body?.email ? [req.body] : []));
     const supabase = getSupabaseAdminClient();
     if (supabase && items.length > 0) {
-      const { error } = await supabase.from("users").upsert(items.map((u: any) => userToRow(u)));
-      if (error) return res.status(500).json({ success: false, error: error.message });
+      const rows = items.map((u: any) => userToRow(u));
+      let { error } = await supabase.from("users").upsert(rows);
+      if (error && (error.message.includes("violates foreign key constraint") || error.message.includes("foreign key"))) {
+        // If university_id or department_id fails foreign key constraint, fallback with nullified foreign keys
+        const safeRows = rows.map((r: any) => ({
+          ...r,
+          university_id: null,
+          department_id: null,
+        }));
+        const retry = await supabase.from("users").upsert(safeRows);
+        if (retry.error) return res.status(500).json({ success: false, error: retry.error.message });
+      } else if (error) {
+        return res.status(500).json({ success: false, error: error.message });
+      }
     }
     return res.json({ success: true, count: items.length });
   } catch (err: any) {

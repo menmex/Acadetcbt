@@ -491,6 +491,13 @@ export default function App() {
     const updatedCount = (sub.questionsAttemptedCount || 0) + 1;
     const limit = sysLimit;
 
+    // Persist guest attempt count in dedicated localStorage key so it survives session clears
+    if (currentUser.isGuest) {
+      try {
+        localStorage.setItem('cbt_guest_attempt_count', String(updatedCount));
+      } catch {}
+    }
+
     let updatedUser: UserProfile = {
       ...currentUser,
       subscription: {
@@ -517,7 +524,9 @@ export default function App() {
         questionsUsed: updatedCount,
         freeLimit: limit,
       });
-      setSubModalOpen(true);
+      if (!currentUser.isGuest) {
+        setSubModalOpen(true);
+      }
     }
   };
 
@@ -628,6 +637,7 @@ export default function App() {
             onNavigate={handleNavigate}
             onOpenSubscribe={() => setSubModalOpen(true)}
             onOpenEditProfile={() => setEditProfileModalOpen(true)}
+            onOpenSignUp={() => handleOpenAuth('register')}
           />
         )}
 
@@ -925,8 +935,10 @@ export default function App() {
           alertType={trialAlertState.type}
           questionsUsed={trialAlertState.questionsUsed}
           freeLimit={trialAlertState.freeLimit}
+          isGuest={currentUser?.isGuest}
           onClose={() => setTrialAlertState((prev) => ({ ...prev, isOpen: false }))}
           onOpenSubscribe={() => setSubModalOpen(true)}
+          onOpenSignUp={() => handleOpenAuth('register')}
         />
       )}
 

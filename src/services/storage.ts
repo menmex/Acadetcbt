@@ -67,6 +67,7 @@ import {
   syncUserToSupabase,
   syncPaymentToSupabase,
   syncQuestionsToSupabase,
+  fetchAllQuestionsFromSupabase,
   deleteQuestionFromSupabase,
   syncUniversitiesToSupabase,
   deleteUniversityFromSupabase,
@@ -644,6 +645,7 @@ const STORAGE_KEYS = {
   FACE_ARENA_ARCHIVES: 'cbt_face_arena_archives',
   QUICK_LINKS: 'cbt_quick_links',
   HOMEPAGE_SECTIONS: 'cbt_homepage_sections',
+  USER_REGISTRY: 'cbt_user_registry',
   ADMIN_ACCOUNTS: 'cbt_admin_accounts',
   CURRENT_ADMIN: 'cbt_current_admin',
 };
@@ -1149,8 +1151,7 @@ export class StorageService {
             }
             if (Array.isArray(catalog.users)) {
               const remoteMapped = catalog.users.map(fromRow.user);
-              this.memoryCache.set(STORAGE_KEYS.USERS, remoteMapped);
-              localStorage.setItem(STORAGE_KEYS.USERS, safeStringify(remoteMapped));
+              this.mergeAndPersistUsers(remoteMapped);
             }
             if (Array.isArray(catalog.payments) && catalog.payments.length > 0) {
               const mapped = catalog.payments.map(fromRow.payment);
@@ -1174,20 +1175,26 @@ export class StorageService {
           const supabase = getSupabaseClient();
           if (supabase) {
             const [
-              { data: sbUnis },
-              { data: sbCourses },
-              { data: sbQuestions },
-              { data: sbPlans },
-              { data: sbUsers },
-              { data: sbPayments },
+              sbUnisResult,
+              sbCoursesResult,
+              sbQuestions,
+              sbPlansResult,
+              sbUsersResult,
+              sbPaymentsResult,
             ] = await Promise.all([
-              supabase.from('universities').select('*').limit(200),
-              supabase.from('courses').select('*').limit(500),
-              supabase.from('questions').select('*').limit(2000),
-              supabase.from('subscription_plans').select('*').limit(50),
-              supabase.from('users').select('*').limit(1000),
-              supabase.from('payments').select('*').limit(500),
+              supabase.from('universities').select('*'),
+              supabase.from('courses').select('*'),
+              fetchAllQuestionsFromSupabase(),
+              supabase.from('subscription_plans').select('*'),
+              supabase.from('users').select('*'),
+              supabase.from('payments').select('*'),
             ]);
+
+            const sbUnis = sbUnisResult?.data;
+            const sbCourses = sbCoursesResult?.data;
+            const sbPlans = sbPlansResult?.data;
+            const sbUsers = sbUsersResult?.data;
+            const sbPayments = sbPaymentsResult?.data;
 
             if (sbUnis && sbUnis.length > 0) {
               const mappedUnis = sbUnis.map(fromRow.university);
@@ -1203,7 +1210,7 @@ export class StorageService {
               syncedSuccessfully = true;
             }
 
-            if (sbQuestions && sbQuestions.length > 0) {
+            if (Array.isArray(sbQuestions) && sbQuestions.length > 0) {
               const mappedQuestions = sbQuestions.map(fromRow.question);
               this.memoryCache.set(STORAGE_KEYS.QUESTIONS, mappedQuestions);
               localStorage.setItem(STORAGE_KEYS.QUESTIONS, safeStringify(mappedQuestions));
@@ -1219,8 +1226,7 @@ export class StorageService {
 
             if (Array.isArray(sbUsers)) {
               const remoteMapped = sbUsers.map(fromRow.user);
-              this.memoryCache.set(STORAGE_KEYS.USERS, remoteMapped);
-              localStorage.setItem(STORAGE_KEYS.USERS, safeStringify(remoteMapped));
+              this.mergeAndPersistUsers(remoteMapped);
               syncedSuccessfully = true;
             }
 
@@ -1421,9 +1427,125 @@ export class StorageService {
   }
 
   // User & Users
+  static mergeAndPersistUsers(remoteUsers: UserProfile[]): UserProfile[] {
+    const localUsers = this.getUsers();
+    let registryUsers: UserProfile[] = [];
+    try {
+      const rawReg = localStorage.getItem(STORAGE_KEYS.USER_REGISTRY);
+      if (rawReg) {
+        const parsed = JSON.parse(rawReg);
+        if (Array.isArray(parsed)) registryUsers = parsed;
+      }
+    } catch {}
+
+    const activeUser = this.getItem<UserProfile | null>(STORAGE_KEYS.USER, null);
+    const userMap = new Map<string, UserProfile>();
+
+    // 1. Index local users (preserves local passwords, offline accounts)
+    localUsers.forEach((u) => {
+      if (u.id) userMap.set(u.id, u);
+      if (u.email) userMap.set(`email_${u.email.toLowerCase().trim()}`, u);
+      if (u.username) userMap.set(`user_${u.username.toLowerCase().trim()}`, u);
+    });
+
+    // 2. Index permanent registry users
+    registryUsers.forEach((u) => {
+      const existing = (u.id ? userMap.get(u.id) : null) ||
+        (u.email ? userMap.get(`email_${u.email.toLowerCase().trim()}`) : null) ||
+        (u.username ? userMap.get(`user_${u.username.toLowerCase().trim()}`) : null);
+      const merged: UserProfile = {
+        ...existing,
+        ...u,
+        password: u.password || existing?.password,
+        passwordHint: u.passwordHint || existing?.passwordHint,
+      };
+      if (merged.id) userMap.set(merged.id, merged);
+      if (merged.email) userMap.set(`email_${merged.email.toLowerCase().trim()}`, merged);
+      if (merged.username) userMap.set(`user_${merged.username.toLowerCase().trim()}`, merged);
+    });
+
+    // 3. Index active session user
+    if (activeUser) {
+      const existing = (activeUser.id ? userMap.get(activeUser.id) : null) ||
+        (activeUser.email ? userMap.get(`email_${activeUser.email.toLowerCase().trim()}`) : null) ||
+        (activeUser.username ? userMap.get(`user_${activeUser.username.toLowerCase().trim()}`) : null);
+      const merged: UserProfile = {
+        ...existing,
+        ...activeUser,
+        password: activeUser.password || existing?.password,
+        passwordHint: activeUser.passwordHint || existing?.passwordHint,
+      };
+      if (merged.id) userMap.set(merged.id, merged);
+      if (merged.email) userMap.set(`email_${merged.email.toLowerCase().trim()}`, merged);
+      if (merged.username) userMap.set(`user_${merged.username.toLowerCase().trim()}`, merged);
+    }
+
+    // 4. Merge remote users over local, preserving credentials and local data
+    remoteUsers.forEach((ru) => {
+      const existing =
+        (ru.id ? userMap.get(ru.id) : null) ||
+        (ru.email ? userMap.get(`email_${ru.email.toLowerCase().trim()}`) : null) ||
+        (ru.username ? userMap.get(`user_${ru.username.toLowerCase().trim()}`) : null);
+
+      const merged: UserProfile = {
+        ...ru,
+        password: existing?.password || ru.password,
+        passwordHint: existing?.passwordHint || ru.passwordHint,
+        bookmarks: (existing?.bookmarks && existing.bookmarks.length > 0) ? existing.bookmarks : (ru.bookmarks || []),
+        seenQuestionIds: (existing?.seenQuestionIds && existing.seenQuestionIds.length > 0) ? existing.seenQuestionIds : (ru.seenQuestionIds || []),
+        purchasedMaterialIds: (existing?.purchasedMaterialIds && existing.purchasedMaterialIds.length > 0) ? existing.purchasedMaterialIds : (ru.purchasedMaterialIds || []),
+      };
+      if (merged.id) userMap.set(merged.id, merged);
+      if (merged.email) userMap.set(`email_${merged.email.toLowerCase().trim()}`, merged);
+      if (merged.username) userMap.set(`user_${merged.username.toLowerCase().trim()}`, merged);
+    });
+
+    const finalUsers = Array.from(new Set(Array.from(userMap.values())));
+    if (finalUsers.length > 0) {
+      this.memoryCache.set(STORAGE_KEYS.USERS, finalUsers);
+      try {
+        localStorage.setItem(STORAGE_KEYS.USERS, safeStringify(finalUsers));
+        localStorage.setItem(STORAGE_KEYS.USER_REGISTRY, safeStringify(finalUsers));
+      } catch {}
+    }
+    return finalUsers;
+  }
+
   static getUsers(): UserProfile[] {
     const rawUsers = this.getItem<UserProfile[]>(STORAGE_KEYS.USERS, DEFAULT_STUDENTS);
-    const list = rawUsers && Array.isArray(rawUsers) && rawUsers.length > 0 ? rawUsers : DEFAULT_STUDENTS;
+    let list = rawUsers && Array.isArray(rawUsers) && rawUsers.length > 0 ? rawUsers : DEFAULT_STUDENTS;
+
+    // Safety fallback: Check permanent user registry in localStorage
+    try {
+      const rawReg = localStorage.getItem(STORAGE_KEYS.USER_REGISTRY);
+      if (rawReg) {
+        const parsed = JSON.parse(rawReg);
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          const idMap = new Map<string, UserProfile>();
+          list.forEach((u) => {
+            if (u.id) idMap.set(u.id, u);
+            if (u.email) idMap.set(`email_${u.email.toLowerCase().trim()}`, u);
+            if (u.username) idMap.set(`user_${u.username.toLowerCase().trim()}`, u);
+          });
+          parsed.forEach((pu) => {
+            const existing = (pu.id ? idMap.get(pu.id) : null) ||
+              (pu.email ? idMap.get(`email_${pu.email.toLowerCase().trim()}`) : null) ||
+              (pu.username ? idMap.get(`user_${pu.username.toLowerCase().trim()}`) : null);
+            const combined: UserProfile = {
+              ...existing,
+              ...pu,
+              password: pu.password || existing?.password,
+              passwordHint: pu.passwordHint || existing?.passwordHint,
+            };
+            if (combined.id) idMap.set(combined.id, combined);
+            if (combined.email) idMap.set(`email_${combined.email.toLowerCase().trim()}`, combined);
+            if (combined.username) idMap.set(`user_${combined.username.toLowerCase().trim()}`, combined);
+          });
+          list = Array.from(new Set(Array.from(idMap.values())));
+        }
+      }
+    } catch {}
+
     return list.map((u) => {
       return this.enforceSubscriptionExpiry(u);
     });
@@ -1434,6 +1556,7 @@ export class StorageService {
     this.memoryCache.delete(STORAGE_KEYS.USER);
     try {
       localStorage.setItem(STORAGE_KEYS.USERS, safeStringify([]));
+      localStorage.setItem(STORAGE_KEYS.USER_REGISTRY, safeStringify([]));
       localStorage.removeItem(STORAGE_KEYS.USER);
     } catch {}
 
@@ -1452,6 +1575,9 @@ export class StorageService {
   static async saveUsers(users: UserProfile[], syncToBackend: boolean = true): Promise<StorageWriteResult> {
     const previous = this.getUsers();
     this.setItem(STORAGE_KEYS.USERS, users);
+    try {
+      localStorage.setItem(STORAGE_KEYS.USER_REGISTRY, safeStringify(users));
+    } catch {}
 
     if (!syncToBackend) return successfulWrite();
 
@@ -1480,6 +1606,9 @@ export class StorageService {
   static async deleteUser(userId: string): Promise<StorageWriteResult> {
     const users = this.getUsers().filter((u) => u.id !== userId);
     this.setItem(STORAGE_KEYS.USERS, users);
+    try {
+      localStorage.setItem(STORAGE_KEYS.USER_REGISTRY, safeStringify(users));
+    } catch {}
 
     const activeUser = this.getItem<UserProfile | null>(STORAGE_KEYS.USER, null);
     if (activeUser && activeUser.id === userId) {
@@ -1523,17 +1652,36 @@ export class StorageService {
     const users = this.getUsers();
 
     const activeSessionUser = this.getItem<UserProfile | null>(STORAGE_KEYS.USER, null);
-    if (!activeSessionUser || activeSessionUser.id === user.id) {
+    if (!activeSessionUser || activeSessionUser.id === user.id || (activeSessionUser.email && user.email && activeSessionUser.email.toLowerCase().trim() === user.email.toLowerCase().trim())) {
       this.setItem(STORAGE_KEYS.USER, user);
+      try {
+        localStorage.setItem(STORAGE_KEYS.USER, safeStringify(user));
+      } catch {}
     }
 
-    const idx = users.findIndex((u) => u.id === user.id);
+    const idx = users.findIndex((u) =>
+      u.id === user.id ||
+      (u.email && user.email && u.email.toLowerCase().trim() === user.email.toLowerCase().trim()) ||
+      (u.username && user.username && u.username.toLowerCase().trim() === user.username.toLowerCase().trim())
+    );
+
     if (idx >= 0) {
-      users[idx] = user;
+      users[idx] = {
+        ...users[idx],
+        ...user,
+        password: user.password || users[idx].password,
+        passwordHint: user.passwordHint || users[idx].passwordHint,
+      };
     } else {
       users.unshift(user);
     }
+
+    this.memoryCache.set(STORAGE_KEYS.USERS, users);
     this.setItem(STORAGE_KEYS.USERS, users);
+    try {
+      localStorage.setItem(STORAGE_KEYS.USERS, safeStringify(users));
+      localStorage.setItem(STORAGE_KEYS.USER_REGISTRY, safeStringify(users));
+    } catch {}
 
     if (!syncToBackend) return;
 
@@ -1548,17 +1696,27 @@ export class StorageService {
 
   static saveLocalUserOnly(user: UserProfile): void {
     const users = this.getUsers();
-    const index = users.findIndex((u) => u.id === user.id || (u.email && user.email && u.email.toLowerCase() === user.email.toLowerCase()));
+    const index = users.findIndex((u) =>
+      u.id === user.id ||
+      (u.email && user.email && u.email.toLowerCase().trim() === user.email.toLowerCase().trim()) ||
+      (u.username && user.username && u.username.toLowerCase().trim() === user.username.toLowerCase().trim())
+    );
     if (index >= 0) {
-      users[index] = user;
+      users[index] = {
+        ...users[index],
+        ...user,
+        password: user.password || users[index].password,
+        passwordHint: user.passwordHint || users[index].passwordHint,
+      };
     } else {
-      users.push(user);
+      users.unshift(user);
     }
     this.memoryCache.set(STORAGE_KEYS.USER, user);
     this.memoryCache.set(STORAGE_KEYS.USERS, users);
     try {
       localStorage.setItem(STORAGE_KEYS.USER, safeStringify(user));
       localStorage.setItem(STORAGE_KEYS.USERS, safeStringify(users));
+      localStorage.setItem(STORAGE_KEYS.USER_REGISTRY, safeStringify(users));
     } catch {}
   }
 
@@ -1566,6 +1724,49 @@ export class StorageService {
   static getQuestions(): Question[] {
     const list = this.getItem<Question[]>(STORAGE_KEYS.QUESTIONS, []);
     return Array.isArray(list) ? list : [];
+  }
+
+  static getQuestionsCount(): number {
+    const questions = this.getQuestions();
+    return questions.length;
+  }
+
+  static async fetchQuestionStats(): Promise<{
+    total: number;
+    published: number;
+    pending: number;
+    review: number;
+    queue: number;
+    draft: number;
+    rejected: number;
+  }> {
+    try {
+      const res = await fetch('/api/questions/stats');
+      if (res.ok) {
+        const data = await res.json();
+        if (data.success) {
+          return {
+            total: data.total || 0,
+            published: data.published || 0,
+            pending: data.pending || 0,
+            review: data.review || 0,
+            queue: data.queue || 0,
+            draft: data.draft || 0,
+            rejected: data.rejected || 0,
+          };
+        }
+      }
+    } catch {}
+    const localQuestions = this.getQuestions();
+    return {
+      total: localQuestions.length,
+      published: localQuestions.filter(q => q.status === 'Published').length,
+      pending: localQuestions.filter(q => q.status === 'Pending').length,
+      review: localQuestions.filter(q => q.status === 'Under Review').length,
+      queue: localQuestions.filter(q => q.status === 'Publishing Queue').length,
+      draft: localQuestions.filter(q => q.status === 'Draft').length,
+      rejected: localQuestions.filter(q => q.status === 'Rejected').length,
+    };
   }
 
   static async clearAllQuestions(): Promise<StorageWriteResult> {
@@ -1586,19 +1787,36 @@ export class StorageService {
     return result;
   }
 
-  static async saveQuestions(questions: Question[]): Promise<StorageWriteResult> {
+  static async saveQuestions(questions: Question[], syncDeletions: boolean = false): Promise<StorageWriteResult> {
     const previous = this.getQuestions();
     this.setItem(STORAGE_KEYS.QUESTIONS, questions);
 
     const results: Promise<StorageWriteResult>[] = [syncQuestionsToSupabase(questions)];
-    const newIds = new Set(questions.map((q) => q.id));
-    previous.forEach((pq) => {
-      if (!newIds.has(pq.id)) {
-        results.push(deleteQuestionFromSupabase(pq.id));
-      }
-    });
+    if (syncDeletions) {
+      const newIds = new Set(questions.map((q) => q.id));
+      previous.forEach((pq) => {
+        if (!newIds.has(pq.id)) {
+          results.push(deleteQuestionFromSupabase(pq.id));
+        }
+      });
+    }
 
     return firstWriteError(await Promise.all(results));
+  }
+
+  static async bulkAddQuestions(newQuestions: Question[]): Promise<StorageWriteResult> {
+    if (!Array.isArray(newQuestions) || newQuestions.length === 0) {
+      return successfulWrite();
+    }
+    const current = this.getQuestions();
+    const map = new Map<string, Question>();
+    current.forEach((q) => map.set(q.id, q));
+    newQuestions.forEach((q) => map.set(q.id, q));
+    const merged = Array.from(map.values());
+    this.setItem(STORAGE_KEYS.QUESTIONS, merged);
+
+    // Sync only the new / updated questions to backend/Supabase
+    return syncQuestionsToSupabase(newQuestions);
   }
 
   static async deleteQuestion(id: string): Promise<StorageWriteResult> {
@@ -1609,9 +1827,10 @@ export class StorageService {
   }
 
   static async addQuestion(q: Question): Promise<StorageWriteResult> {
-    const list = this.getQuestions();
+    const list = this.getQuestions().filter(item => item.id !== q.id);
     list.unshift(q);
-    return this.saveQuestions(list);
+    this.setItem(STORAGE_KEYS.QUESTIONS, list);
+    return syncQuestionsToSupabase([q]);
   }
 
   // Universities, Faculties, Depts, Courses, Topics

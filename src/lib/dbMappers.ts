@@ -427,6 +427,8 @@ export function userFromRow(row: DbRow): UserProfile {
     streakCount: Number(value(row, 'total_questions_attempted', 'streakCount', 0)),
     lastPracticeDate: row.last_practice_date ?? row.lastPracticeDate,
     streakHistory: row.streak_history ?? row.streakHistory ?? [],
+    password: row.password ?? (row as any).password_hash ?? undefined,
+    passwordHint: row.password_hint ?? row.passwordHint ?? undefined,
     isRestricted: row.is_restricted ?? row.isRestricted,
     isBanned: row.is_banned ?? row.isBanned,
     banReason: row.ban_reason ?? row.banReason,

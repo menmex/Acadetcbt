@@ -6,8 +6,10 @@ export interface TrialAlertModalProps {
   alertType: '80_percent' | '100_percent' | null;
   questionsUsed: number;
   freeLimit: number;
+  isGuest?: boolean;
   onClose: () => void;
   onOpenSubscribe: () => void;
+  onOpenSignUp?: () => void;
 }
 
 export const TrialAlertModal: React.FC<TrialAlertModalProps> = ({
@@ -15,8 +17,10 @@ export const TrialAlertModal: React.FC<TrialAlertModalProps> = ({
   alertType,
   questionsUsed,
   freeLimit,
+  isGuest = false,
   onClose,
   onOpenSubscribe,
+  onOpenSignUp,
 }) => {
   if (!isOpen || !alertType) return null;
 
@@ -43,7 +47,7 @@ export const TrialAlertModal: React.FC<TrialAlertModalProps> = ({
           </button>
 
           <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">
-            Alert Notice
+            {isGuest ? 'Guest Trial Notice' : 'Alert Notice'}
           </span>
 
           <button
@@ -81,11 +85,15 @@ export const TrialAlertModal: React.FC<TrialAlertModalProps> = ({
                 : 'bg-rose-500/10 text-rose-300 border-rose-500/30'
             }`}
           >
-            {is80 ? '⚠️ 80% Free Trial Limit Warning' : '🚨 100% Free Trial Limit Reached'}
+            {is80 
+              ? (isGuest ? '⚠️ 80% Guest Limit Reached' : '⚠️ 80% Free Trial Limit Warning')
+              : (isGuest ? '🚨 30-Question Guest Limit Reached' : '🚨 100% Free Trial Limit Reached')}
           </span>
 
           <h2 className="text-xl sm:text-2xl font-black text-white mt-3">
-            {is80 ? 'Free Trial Limit Warning' : 'Free Trial Completed'}
+            {is80
+              ? (isGuest ? 'Guest Trial Almost Used' : 'Free Trial Limit Warning')
+              : (isGuest ? 'Guest Practice Finished' : 'Free Trial Completed')}
           </h2>
         </div>
 
@@ -94,16 +102,19 @@ export const TrialAlertModal: React.FC<TrialAlertModalProps> = ({
           {is80 ? (
             <>
               <p className="text-amber-200 font-semibold bg-amber-950/40 border border-amber-500/30 p-2.5 rounded-xl mb-2">
-                You have {remaining} free practice questions left. Upgrade to Premium for unlimited access.
+                You have {remaining} free practice questions left.{' '}
+                {isGuest ? 'Create a Student Account to save your progress permanently and unlock full features!' : 'Upgrade to Premium for unlimited access.'}
               </p>
               <div className="text-slate-400 text-xs">
-                Completed <strong className="text-amber-400">{questionsUsed} of {freeLimit}</strong> free trial questions ({Math.round((questionsUsed / freeLimit) * 100)}% of quota).
+                Completed <strong className="text-amber-400">{questionsUsed} of {freeLimit}</strong> {isGuest ? 'guest' : 'free trial'} questions ({Math.round((questionsUsed / freeLimit) * 100)}% of quota).
               </div>
             </>
           ) : (
             <>
-              <p className="text-amber-200 font-semibold bg-amber-950/40 border border-amber-500/30 p-2.5 rounded-xl mb-2">
-                You have exhausted your free trial. Upgrade to Premium to continue practicing.
+              <p className="text-rose-200 font-semibold bg-rose-950/40 border border-rose-500/30 p-2.5 rounded-xl mb-2">
+                {isGuest 
+                  ? 'You have used all 30 free guest questions! Create a Student Account to save your full test history and continue practicing.'
+                  : 'You have exhausted your free trial. Upgrade to Premium to continue practicing.'}
               </p>
               <div className="text-slate-400 text-xs">
                 Questions Used: <strong className="text-rose-400">{questionsUsed} / {freeLimit}</strong> • Remaining: <strong className="text-slate-300">0</strong>
@@ -115,7 +126,7 @@ export const TrialAlertModal: React.FC<TrialAlertModalProps> = ({
         {/* Progress Visualizer Bar */}
         <div className="space-y-1.5 text-left">
           <div className="flex justify-between text-[11px] font-bold text-slate-400">
-            <span>Free Trial Usage</span>
+            <span>{isGuest ? 'Guest Practice Usage' : 'Free Trial Usage'}</span>
             <span className={is80 ? 'text-amber-400' : 'text-rose-400'}>
               {Math.min(100, Math.round((questionsUsed / freeLimit) * 100))}%
             </span>
@@ -132,18 +143,46 @@ export const TrialAlertModal: React.FC<TrialAlertModalProps> = ({
 
         {/* Action Buttons */}
         <div className="pt-2 flex flex-col gap-2.5 shrink-0">
-          <button
-            onClick={() => {
-              onClose();
-              onOpenSubscribe();
-            }}
-            className="w-full py-3.5 bg-gradient-to-r from-amber-500 via-indigo-600 to-indigo-700 hover:from-amber-400 hover:to-indigo-500 text-white font-black text-xs sm:text-sm rounded-xl shadow-xl transition-all flex items-center justify-center gap-2 cursor-pointer active:scale-[0.98]"
-            id="trial-alert-upgrade-btn"
-          >
-            <Crown className="w-4 h-4 text-amber-200 shrink-0" />
-            <span>Upgrade to Premium</span>
-            <ArrowRight className="w-4 h-4 ml-1 shrink-0" />
-          </button>
+          {isGuest && onOpenSignUp ? (
+            <button
+              onClick={() => {
+                onClose();
+                onOpenSignUp();
+              }}
+              className="w-full py-3.5 bg-gradient-to-r from-indigo-600 via-indigo-500 to-emerald-600 hover:from-indigo-500 hover:to-emerald-500 text-white font-black text-xs sm:text-sm rounded-xl shadow-xl transition-all flex items-center justify-center gap-2 cursor-pointer active:scale-[0.98]"
+              id="trial-alert-create-account-btn"
+            >
+              <Sparkles className="w-4 h-4 text-emerald-200 shrink-0" />
+              <span>Create Free Student Account</span>
+              <ArrowRight className="w-4 h-4 ml-1 shrink-0" />
+            </button>
+          ) : (
+            <button
+              onClick={() => {
+                onClose();
+                onOpenSubscribe();
+              }}
+              className="w-full py-3.5 bg-gradient-to-r from-amber-500 via-indigo-600 to-indigo-700 hover:from-amber-400 hover:to-indigo-500 text-white font-black text-xs sm:text-sm rounded-xl shadow-xl transition-all flex items-center justify-center gap-2 cursor-pointer active:scale-[0.98]"
+              id="trial-alert-upgrade-btn"
+            >
+              <Crown className="w-4 h-4 text-amber-200 shrink-0" />
+              <span>Upgrade to Premium</span>
+              <ArrowRight className="w-4 h-4 ml-1 shrink-0" />
+            </button>
+          )}
+
+          {isGuest && (
+            <button
+              onClick={() => {
+                onClose();
+                onOpenSubscribe();
+              }}
+              className="w-full py-2.5 bg-slate-800/90 hover:bg-slate-700 text-amber-300 font-bold text-xs rounded-xl border border-amber-500/30 transition-all flex items-center justify-center gap-1.5 cursor-pointer"
+            >
+              <Crown className="w-3.5 h-3.5 text-amber-400" />
+              <span>Or View Premium Plans</span>
+            </button>
+          )}
 
           <div className="grid grid-cols-2 gap-2 pt-1">
             <button
