@@ -132,7 +132,7 @@ export const Navbar: React.FC<NavbarProps> = ({
           </div>
           <div>
             <div className="flex items-center space-x-1.5">
-              <span className={`font-extrabold text-lg tracking-tight transition-colors ${
+              <span className={`font-extrabold text-sm sm:text-base md:text-lg tracking-tight whitespace-nowrap transition-colors ${
                 themeMode === 'light' ? 'text-slate-900' : 'text-white'
               }`}>
                 Acadet CBT MASTER
@@ -189,14 +189,14 @@ export const Navbar: React.FC<NavbarProps> = ({
                     Mock CBT
                   </button>
                   <button
-                    onClick={() => onNavigate('face_arena')}
+                    onClick={() => onNavigate('pre_jamb')}
                     className={`px-3 py-2 rounded-lg text-sm font-medium transition-colors flex items-center gap-1.5 ${
-                      activeTab === 'face_arena' ? 'bg-amber-50 dark:bg-amber-500/20 text-amber-700 dark:text-amber-300 border border-amber-300 dark:border-amber-500/40 font-bold' : 'text-amber-600 dark:text-amber-400 hover:text-amber-700 dark:hover:text-amber-300 hover:bg-amber-50 dark:hover:bg-amber-500/10'
+                      activeTab === 'pre_jamb' ? 'bg-emerald-50 dark:bg-emerald-950 text-emerald-700 dark:text-emerald-300 border border-emerald-300 dark:border-emerald-500/40 font-bold' : 'text-emerald-700 dark:text-emerald-400 hover:text-emerald-800 dark:hover:text-emerald-300 hover:bg-emerald-50 dark:hover:bg-emerald-950/40'
                     }`}
-                    id="nav-btn-face-arena"
+                    id="nav-btn-pre-jamb"
                   >
-                    <Award className="w-4 h-4 text-amber-500" />
-                    <span>🏆 Face Arena</span>
+                    <Award className="w-4 h-4 text-emerald-500" />
+                    <span>🏆 Pre-JAMB CBT</span>
                   </button>
                   <button
                     onClick={() => onNavigate('community')}
@@ -601,6 +601,12 @@ export const Navbar: React.FC<NavbarProps> = ({
                     className="block w-full text-left px-3 py-2 text-sm text-slate-200 hover:bg-slate-800 rounded-lg"
                   >
                     Practice Mode
+                  </button>
+                  <button
+                    onClick={() => { onNavigate('pre_jamb'); setMobileMenuOpen(false); }}
+                    className="block w-full text-left px-3 py-2 text-sm text-emerald-400 font-bold hover:bg-slate-800 rounded-lg"
+                  >
+                    🏆 Pre-JAMB CBT
                   </button>
                   <button
                     onClick={() => { onNavigate('mock_cbt'); setMobileMenuOpen(false); }}

@@ -482,11 +482,12 @@ export function resultFromRow(row: DbRow): TestSessionResult {
 }
 
 export function paymentToRow(p: Partial<PaymentTransaction> & { id: string }): DbRow {
+  const meta = p.metadata ?? (p as any).meta ?? null;
   return stripEmptyTimestamps({
     id: toValidUuid(p.id || p.reference) || p.id,
     transaction_ref: p.reference ?? (p as any).transaction_ref ?? '',
     user_id: toValidUuid(p.userId) ?? null,
-    email: p.userEmail ?? (p as any).email ?? '',
+    email: p.userEmail ?? (p as any).email ?? (p as any).user_email ?? '',
     user_name: (p as any).userName ?? (p as any).user_name ?? '',
     plan: (p as any).plan ?? p.planName ?? (p as any).plan_name ?? (p as any).planId ?? 'General Access',
     plan_id: (p as any).planId ?? (p as any).plan_id ?? null,
@@ -494,10 +495,12 @@ export function paymentToRow(p: Partial<PaymentTransaction> & { id: string }): D
     amount: Number(p.amount ?? 0),
     status: p.status ?? 'pending',
     provider: p.gateway ?? (p as any).provider ?? 'squad',
+    gateway: p.gateway ?? (p as any).provider ?? 'squad',
     payment_method: (p as any).paymentMethod ?? (p as any).payment_method ?? 'card',
     duration_days: Number((p as any).durationDays ?? (p as any).duration_days ?? 30),
     expiry_date: (p as any).expiryDate ?? (p as any).expiry_date ?? null,
     notes: (p as any).notes ?? null,
+    metadata: meta,
   });
 }
 
@@ -520,6 +523,7 @@ export function paymentFromRow(row: DbRow): PaymentTransaction {
     handledByAdmin: row.handled_by_admin ?? row.handledByAdmin,
     rejectionReason: row.rejection_reason ?? row.rejectionReason,
     notes: row.notes ?? row.notes,
+    metadata: row.metadata ?? (row.notes && typeof row.notes === 'string' && row.notes.startsWith('{') ? (() => { try { return JSON.parse(row.notes); } catch { return undefined; } })() : undefined),
   };
 }
 

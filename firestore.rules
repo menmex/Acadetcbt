@@ -100,6 +100,27 @@ service cloud.firestore {
     }
 
     // =========================================================================
+    // PRE-JAMB ACADEMY DEDICATED CBT DATABASE
+    // =========================================================================
+    match /prejamb_questions/{questionId} {
+      allow read: if true;
+      allow write, delete: if true; // Allows test generation and candidate drills
+    }
+
+    match /prejamb_candidates/{candidateId} {
+      allow read, write, create, update: if true;
+    }
+
+    match /prejamb_results/{resultId} {
+      allow read, write, create: if true;
+    }
+
+    match /prejamb_subjects/{subjectId} {
+      allow read: if true;
+      allow write: if true;
+    }
+
+    // =========================================================================
     // 3. SYSTEM SETTINGS & DYNAMIC INTERFACE EDITOR
     // =========================================================================
     match /settings/{docId} {

@@ -29,6 +29,7 @@ import {
 } from 'lucide-react';
 import { SubscriptionPlan, UserProfile, QuickLinkItem, HomepageSection } from '../types';
 import { StorageService } from '../services/storage';
+import { PreJambCbtCard } from './PreJambCbtCard';
 
 interface LandingPageProps {
   onStartPractice: () => void;
@@ -37,6 +38,7 @@ interface LandingPageProps {
   plans: SubscriptionPlan[];
   currentUser?: UserProfile | null;
   onOpenFounder?: () => void;
+  onStartPreJamb?: () => void;
 }
 
 export const LandingPage: React.FC<LandingPageProps> = ({
@@ -46,6 +48,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({
   plans,
   currentUser,
   onOpenFounder,
+  onStartPreJamb,
 }) => {
   const [activeFaq, setActiveFaq] = useState<number | null>(0);
   const [selectedAnswer, setSelectedAnswer] = useState<string | null>(null);
@@ -196,6 +199,14 @@ export const LandingPage: React.FC<LandingPageProps> = ({
                 <p className="text-2xl font-bold text-purple-400">Instant Smart</p>
                 <p className="text-xs text-slate-400 mt-1">Material Extraction</p>
               </div>
+            </div>
+
+            {/* 🏆 Featured Pre-JAMB Acadet CBT Test Card */}
+            <div className="w-full max-w-xl mx-auto pt-6">
+              <PreJambCbtCard
+                onStartTest={onStartPreJamb || onStartPractice}
+                onStartGuestMode={onStartPreJamb || onStartPractice}
+              />
             </div>
 
           </div>

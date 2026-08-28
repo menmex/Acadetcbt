@@ -121,9 +121,73 @@
         "badge": { "type": "string" }
       },
       "required": ["id", "type", "title", "status", "order"]
+    },
+    "PreJambCandidate": {
+      "title": "PreJambCandidate",
+      "description": "Pre-JAMB registered candidate profile with UTME combo and metrics",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "regNumber": { "type": "string" },
+        "name": { "type": "string" },
+        "email": { "type": "string" },
+        "targetUniversity": { "type": "string" },
+        "targetCourse": { "type": "string" },
+        "subscriptionStatus": { "type": "string", "enum": ["active", "free", "expired"] },
+        "totalTestsTaken": { "type": "number" },
+        "bestScore": { "type": "number" },
+        "averageScore": { "type": "number" },
+        "createdAt": { "type": "string" }
+      },
+      "required": ["id", "regNumber", "name", "email"]
+    },
+    "PreJambQuestion": {
+      "title": "PreJambQuestion",
+      "description": "Pre-JAMB isolated question bank record",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "subjectId": { "type": "string" },
+        "question": { "type": "string" },
+        "options": { "type": "array" },
+        "correctAnswer": { "type": "string" },
+        "explanation": { "type": "string" },
+        "topic": { "type": "string" }
+      },
+      "required": ["id", "subjectId", "question", "correctAnswer"]
+    },
+    "PreJambExamResult": {
+      "title": "PreJambExamResult",
+      "description": "Pre-JAMB completed mock test result",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "candidateId": { "type": "string" },
+        "examTitle": { "type": "string" },
+        "isFullMock": { "type": "boolean" },
+        "totalQuestions": { "type": "number" },
+        "totalScore": { "type": "number" },
+        "percentage": { "type": "number" },
+        "utmeAggregate": { "type": "number" },
+        "timeUsedSeconds": { "type": "number" },
+        "completedAt": { "type": "string" }
+      },
+      "required": ["id", "candidateId", "percentage", "completedAt"]
     }
   },
   "firestore": {
+    "/prejamb_candidates/{candidateId}": {
+      "schema": "PreJambCandidate",
+      "description": "Pre-JAMB candidate profiles database"
+    },
+    "/prejamb_questions/{questionId}": {
+      "schema": "PreJambQuestion",
+      "description": "Pre-JAMB question bank collection"
+    },
+    "/prejamb_results/{resultId}": {
+      "schema": "PreJambExamResult",
+      "description": "Pre-JAMB test results database"
+    },
     "/quick_links/{linkId}": {
       "schema": "QuickLink",
       "description": "Dynamic quick links collection"

@@ -7,6 +7,7 @@ import {
   FaceArenaArchive
 } from '../types';
 import { StorageService } from '../services/storage';
+import { PreJambCbtCard } from './PreJambCbtCard';
 import {
   Trophy,
   Clock,
@@ -27,7 +28,8 @@ import {
   ListOrdered,
   BarChart3,
   ChevronRight,
-  ChevronLeft
+  ChevronLeft,
+  Play
 } from 'lucide-react';
 
 interface FaceArenaViewProps {
@@ -170,6 +172,45 @@ export const FaceArenaView: React.FC<FaceArenaViewProps> = ({ user, onNavigate }
     setCurrentParticipant(newParticipant);
     StorageService.saveFaceArenaParticipant(newParticipant);
     setActiveStep('ready');
+  };
+
+  // Handle Instant Guest Mode Start
+  const handleStartGuestMode = () => {
+    const qList = prepareQuizQuestions();
+    setActiveQuestions(qList);
+
+    const guestId = `guest-${Date.now()}-${Math.floor(1000 + Math.random() * 9000)}`;
+    const candidateName = user.name && user.name !== 'Guest User' && user.name !== 'User' 
+      ? user.name 
+      : `Guest Candidate #${Math.floor(100 + Math.random() * 900)}`;
+
+    const guestParticipant: FaceArenaParticipant = {
+      id: guestId,
+      weeklyChallengeId: settings.weeklyChallengeId,
+      userId: user.id || 'guest',
+      fullName: candidateName,
+      whatsAppNumber: 'N/A (Guest Mode)',
+      date: new Date().toISOString(),
+      timeStarted: new Date().toISOString(),
+      timeSubmitted: null,
+      timeUsedSeconds: 0,
+      questionsAttempted: 0,
+      totalQuestions: qList.length,
+      correctAnswers: 0,
+      wrongAnswers: 0,
+      score: 0,
+      percentage: 0,
+      passed: false,
+      answers: {},
+      status: 'in_progress',
+    };
+
+    setCurrentParticipant(guestParticipant);
+    StorageService.saveFaceArenaParticipant(guestParticipant);
+
+    const duration = settings.timerDurationSeconds || 60;
+    setTimeRemaining(duration);
+    setActiveStep('quiz');
   };
 
   // Handle Click "Start Quiz"
@@ -364,18 +405,18 @@ export const FaceArenaView: React.FC<FaceArenaViewProps> = ({ user, onNavigate }
             <div className="flex items-center gap-2">
               <span className="px-2.5 py-0.5 bg-amber-500/20 text-amber-300 border border-amber-500/30 text-[10px] font-bold rounded-full uppercase tracking-wider flex items-center gap-1">
                 <Trophy className="w-3 h-3 text-amber-400" />
-                {settings.weeklyTitle || 'Weekly Challenge'}
+                {settings.weeklyTitle || 'Pre-JAMB Acadet CBT Test'}
               </span>
               <span className={`px-2 py-0.5 text-[10px] font-bold rounded-full uppercase border ${
                 settings.status === 'open'
                   ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/30'
                   : 'bg-rose-500/20 text-rose-300 border-rose-500/30'
               }`}>
-                {settings.status === 'open' ? 'Live Challenge' : 'Closed'}
+                {settings.status === 'open' ? 'Live Test Active' : 'Closed'}
               </span>
             </div>
             <h1 className="text-lg sm:text-xl font-extrabold text-white mt-1">
-              🏆 Face Arena Weekly Quiz Challenge
+              🏆 Pre-JAMB Acadet CBT Test
             </h1>
           </div>
         </div>
@@ -420,10 +461,10 @@ export const FaceArenaView: React.FC<FaceArenaViewProps> = ({ user, onNavigate }
 
           <div className="max-w-md mx-auto space-y-3">
             <h2 className="text-2xl font-black text-white">
-              Challenge Currently Closed
+              Pre-JAMB Test Currently Closed
             </h2>
             <p className="text-sm text-slate-300 leading-relaxed font-medium bg-slate-950/60 p-4 rounded-2xl border border-slate-800">
-              « The Face Arena Weekly Quiz Challenge is currently closed. Please check back when the next challenge opens. »
+              « The Pre-JAMB Acadet CBT Test is currently closed. Please check back when the next official test session opens. »
             </p>
           </div>
 
@@ -445,25 +486,30 @@ export const FaceArenaView: React.FC<FaceArenaViewProps> = ({ user, onNavigate }
         </div>
       )}
 
-      {/* ================= STEP 2: REGISTRATION FORM ================= */}
+      {/* ================= STEP 2: REGISTRATION & GUEST LAUNCH SCREEN ================= */}
       {activeStep === 'register' && (
-        <div className="bg-slate-900 border border-slate-800 rounded-3xl p-6 sm:p-8 shadow-2xl relative overflow-hidden" id="face-arena-register-screen">
-          <div className="absolute top-0 right-0 w-80 h-80 bg-indigo-500/10 rounded-full blur-3xl pointer-events-none"></div>
+        <div className="space-y-6" id="face-arena-register-screen">
+          {/* Exact Pre-JAMB Acadet CBT Test Card Component */}
+          <PreJambCbtCard
+            onStartGuestMode={handleStartGuestMode}
+            onStartTest={handleStartGuestMode}
+          />
 
-          <div className="relative z-10 max-w-xl mx-auto space-y-6">
-            <div className="text-center space-y-2">
-              <div className="w-14 h-14 bg-gradient-to-br from-amber-500 to-indigo-600 rounded-2xl flex items-center justify-center mx-auto text-white shadow-lg">
-                <Trophy className="w-7 h-7 text-amber-200" />
-              </div>
-              <h2 className="text-2xl font-extrabold text-white">
-                Face Arena Weekly Quiz Challenge
-              </h2>
+          {/* Optional Official Leaderboard Registration Panel */}
+          <div className="bg-slate-900 border border-slate-800 rounded-3xl p-6 sm:p-8 shadow-2xl relative overflow-hidden max-w-xl mx-auto">
+            <div className="text-center space-y-1 mb-5">
+              <span className="px-3 py-1 bg-indigo-500/20 text-indigo-300 border border-indigo-500/30 text-[10px] font-extrabold rounded-full uppercase tracking-wider">
+                Official National Ranking Mode
+              </span>
+              <h3 className="text-lg font-black text-white">
+                Register for Official Merit Leaderboard
+              </h3>
               <p className="text-xs text-slate-400">
-                Please confirm your registration details to enter this week's timed CBT competition.
+                Want your name and score featured on the national leaderboard? Enter your details below:
               </p>
             </div>
 
-            <form onSubmit={handleRegisterSubmit} className="space-y-4 bg-slate-950/60 p-6 rounded-2xl border border-slate-800/80">
+            <form onSubmit={handleRegisterSubmit} className="space-y-4 bg-slate-950/60 p-5 rounded-2xl border border-slate-800/80">
               {phoneError && (
                 <div className="p-3.5 bg-rose-500/10 border border-rose-500/30 rounded-xl text-rose-300 text-xs flex items-center gap-2">
                   <AlertTriangle className="w-4 h-4 shrink-0" />
@@ -500,7 +546,7 @@ export const FaceArenaView: React.FC<FaceArenaViewProps> = ({ user, onNavigate }
                   required
                 />
                 <span className="text-[11px] text-slate-500 block">
-                  Required for official winner announcements and prize verification.
+                  Required for official score report alerts, merit lists & UTME updates.
                 </span>
               </div>
 
@@ -511,20 +557,20 @@ export const FaceArenaView: React.FC<FaceArenaViewProps> = ({ user, onNavigate }
                   id="face-arena-register-submit-btn"
                 >
                   <Send className="w-4 h-4" />
-                  Submit Registration
+                  Register & Enter National Competition
                 </button>
               </div>
             </form>
 
-            <div className="flex items-center justify-center gap-4 text-xs text-slate-400">
+            <div className="mt-4 flex items-center justify-center gap-4 text-xs text-slate-400">
               <span className="flex items-center gap-1">
                 <ShieldCheck className="w-4 h-4 text-emerald-400" />
-                Verified Competition
+                Verified Simulation
               </span>
               <span>•</span>
               <span className="flex items-center gap-1">
                 <Clock className="w-4 h-4 text-amber-400" />
-                Timed CBT
+                UTME Timed Exam
               </span>
             </div>
           </div>
@@ -540,10 +586,10 @@ export const FaceArenaView: React.FC<FaceArenaViewProps> = ({ user, onNavigate }
 
           <div className="max-w-lg mx-auto space-y-3">
             <h2 className="text-2xl sm:text-3xl font-black text-white">
-              Face Arena Weekly Quiz Challenge
+              Pre-JAMB Acadet CBT Test
             </h2>
             <div className="p-4 bg-amber-500/10 border border-amber-500/30 rounded-2xl text-amber-200 text-sm font-semibold leading-relaxed">
-              « Get Ready! You are about to begin the weekly challenge. Once you start, the timer begins immediately. »
+              « Get Ready! You are about to begin the Pre-JAMB UTME CBT simulation. Once started, the countdown timer begins immediately. »
             </div>
           </div>
 
@@ -566,15 +612,32 @@ export const FaceArenaView: React.FC<FaceArenaViewProps> = ({ user, onNavigate }
             </div>
           </div>
 
-          <div className="pt-2">
-            <button
-              onClick={handleStartQuiz}
-              className="px-8 py-4 bg-gradient-to-r from-emerald-500 to-indigo-600 hover:from-emerald-400 hover:to-indigo-500 text-white font-black text-base rounded-2xl shadow-xl shadow-emerald-500/20 transition-all flex items-center justify-center gap-2 mx-auto cursor-pointer"
-              id="face-arena-start-quiz-btn"
-            >
-              <Trophy className="w-5 h-5 text-amber-300" />
-              Start Quiz Now
-            </button>
+          {/* Test Launch Controls (Supports In-App and External Website Portal) */}
+          <div className="pt-2 flex flex-col sm:flex-row items-center justify-center gap-3">
+            {/* If External Link configured */}
+            {settings.externalTestUrl && (settings.testMode === 'external_link' || settings.testMode === 'both') && (
+              <a
+                href={settings.externalTestUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="w-full sm:w-auto px-8 py-4 bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-400 hover:to-orange-400 text-slate-950 font-black text-sm rounded-2xl shadow-xl shadow-amber-500/20 transition-all flex items-center justify-center gap-2 cursor-pointer"
+              >
+                <Trophy className="w-5 h-5 text-slate-950" />
+                <span>{settings.externalButtonText || 'Start Test on External Portal'}</span>
+              </a>
+            )}
+
+            {/* In-App Option */}
+            {(!settings.testMode || settings.testMode === 'in_app' || settings.testMode === 'both') && (
+              <button
+                onClick={handleStartQuiz}
+                className="w-full sm:w-auto px-8 py-4 bg-gradient-to-r from-emerald-500 to-indigo-600 hover:from-emerald-400 hover:to-indigo-500 text-white font-black text-sm rounded-2xl shadow-xl shadow-emerald-500/20 transition-all flex items-center justify-center gap-2 cursor-pointer"
+                id="face-arena-start-quiz-btn"
+              >
+                <Play className="w-5 h-5 text-amber-300" />
+                <span>Start In-App CBT Simulation</span>
+              </button>
+            )}
           </div>
         </div>
       )}
@@ -807,7 +870,7 @@ export const FaceArenaView: React.FC<FaceArenaViewProps> = ({ user, onNavigate }
             <div>
               <h2 className="text-xl font-black text-white flex items-center gap-2">
                 <Trophy className="w-5 h-5 text-amber-400" />
-                Face Arena Challenge Leaderboard
+                Pre-JAMB Acadet CBT Test Leaderboard
               </h2>
               <p className="text-xs text-slate-400 mt-0.5">
                 Rankings sorted by highest score, least time used, and earliest submission.

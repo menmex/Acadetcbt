@@ -1,5 +1,6 @@
 import React from 'react';
 import { UserProfile, TestSessionResult, Question, Course } from '../types';
+import { PreJambCbtCard } from './PreJambCbtCard';
 import {
   Sparkles,
   BookOpen,
@@ -422,42 +423,12 @@ export const StudentDashboard: React.FC<StudentDashboardProps> = ({
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             
-            {/* 🏆 Face Arena Weekly Quiz Challenge Featured Card */}
-            <div
-              onClick={() => onNavigate('face_arena')}
-              className="sm:col-span-2 bg-gradient-to-r from-amber-500/10 via-slate-900 to-indigo-500/10 border-2 border-amber-500/40 hover:border-amber-400 p-6 rounded-2xl cursor-pointer transition-all group hover:-translate-y-1 shadow-xl shadow-amber-500/10 relative overflow-hidden"
-              id="dashboard-face-arena-card"
-            >
-              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-                <div className="flex items-start gap-4">
-                  <div className="w-14 h-14 rounded-2xl bg-amber-500/20 text-amber-300 border border-amber-500/40 flex items-center justify-center shrink-0 group-hover:scale-110 transition-transform shadow-lg">
-                    <Award className="w-8 h-8 text-amber-300" />
-                  </div>
-                  <div className="space-y-1">
-                    <div className="flex items-center gap-2">
-                      <span className="px-2.5 py-0.5 bg-amber-500 text-slate-950 font-black text-[10px] rounded-full uppercase tracking-wider">
-                        Weekly Competition
-                      </span>
-                      <span className="text-[11px] text-amber-300 font-bold">
-                        Live Timed Challenge
-                      </span>
-                    </div>
-                    <h3 className="text-lg font-black text-white group-hover:text-amber-200 transition-colors">
-                      🏆 Face Arena Weekly Quiz Challenge
-                    </h3>
-                    <p className="text-xs text-slate-300 max-w-lg leading-relaxed">
-                      Compete in our weekly timed CBT quiz challenge! Register your WhatsApp number, answer questions under pressure, and battle for top leaderboard positions.
-                    </p>
-                  </div>
-                </div>
-
-                <div className="shrink-0 pt-2 sm:pt-0">
-                  <span className="px-5 py-3 bg-gradient-to-r from-amber-500 to-indigo-600 hover:from-amber-400 hover:to-indigo-500 text-slate-950 font-black text-xs rounded-xl shadow-lg flex items-center gap-2 group-hover:gap-3 transition-all">
-                    <span>Enter Face Arena</span>
-                    <ArrowRight className="w-4 h-4" />
-                  </span>
-                </div>
-              </div>
+            {/* 🏆 Pre-JAMB Acadet CBT Test Featured Card Interface */}
+            <div className="sm:col-span-2">
+              <PreJambCbtCard
+                onStartTest={() => onNavigate('pre_jamb')}
+                onStartGuestMode={() => onNavigate('pre_jamb')}
+              />
             </div>
 
             {/* Practice Mode Launcher */}

@@ -108,15 +108,103 @@ const processedKorapayReferences = new Set<string>();
 // Official Subscription Plans Configuration
 const SUBSCRIPTION_PLANS: Record<string, { id: string; name: string; price: number; durationDays: number }> = {
   "plan-1d": { id: "plan-1d", name: "1-Day Starter Pass", price: 150, durationDays: 1 },
-  "premium-150": { id: "premium-150", name: "1-Day Starter Pass", price: 150, durationDays: 1 },
-  "plan-150": { id: "plan-150", name: "1-Day Starter Pass", price: 150, durationDays: 1 },
-  "premium": { id: "premium", name: "Premium Plan", price: 800, durationDays: 30 },
-  "premium-basic": { id: "premium-basic", name: "Premium Basic", price: 800, durationDays: 14 },
-  "plan-14d": { id: "plan-14d", name: "Premium Basic (14-Day)", price: 800, durationDays: 14 },
-  "premium-plus": { id: "premium-plus", name: "Premium Plus", price: 1500, durationDays: 30 },
-  "plan-30d": { id: "plan-30d", name: "Premium Plus (30-Day)", price: 1500, durationDays: 30 },
-  "premium-pro": { id: "premium-pro", name: "Premium Pro", price: 3500, durationDays: 90 },
-  "plan-90d": { id: "plan-90d", name: "Premium Pro (90-Day)", price: 3500, durationDays: 90 },
+  "basic": { id: "basic", name: "1-Day Starter Pass", price: 150, durationDays: 1 },
+  "plan-10d": { id: "plan-10d", name: "10-Day Intensive Pass", price: 500, durationDays: 10 },
+  "standard": { id: "standard", name: "14-Day Premium Access", price: 800, durationDays: 14 },
+  "premium-basic": { id: "premium-basic", name: "14-Day Premium Access", price: 800, durationDays: 14 },
+  "plan-14d": { id: "plan-14d", name: "14-Day Premium Access", price: 800, durationDays: 14 },
+  "premium": { id: "premium", name: "30-Day Full Access", price: 1500, durationDays: 30 },
+  "premium-plus": { id: "premium-plus", name: "30-Day Full Access", price: 1500, durationDays: 30 },
+  "plan-30d": { id: "plan-30d", name: "30-Day Full Access", price: 1500, durationDays: 30 },
+  "premium-pro": { id: "premium-pro", name: "90-Day Semester Pass", price: 3500, durationDays: 90 },
+  "plan-90d": { id: "plan-90d", name: "90-Day Semester Pass", price: 3500, durationDays: 90 },
+};
+
+// Helper: Payment Database Resilient Operations
+const findPaymentDocInSupabase = async (supabase: any, reference: string) => {
+  if (!supabase || !reference) return null;
+  const targetId = toValidUuid(reference) || reference;
+
+  // 1. Try transaction_ref
+  try {
+    const { data, error } = await supabase.from("payments").select("*").eq("transaction_ref", reference).maybeSingle();
+    if (!error && data) return data;
+  } catch {}
+
+  // 2. Try id
+  try {
+    const { data, error } = await supabase.from("payments").select("*").eq("id", targetId).maybeSingle();
+    if (!error && data) return data;
+  } catch {}
+
+  // 3. Try reference (if present in custom schema)
+  try {
+    const { data, error } = await supabase.from("payments").select("*").eq("reference", reference).maybeSingle();
+    if (!error && data) return data;
+  } catch {}
+
+  return null;
+};
+
+const updatePaymentStatusInSupabase = async (supabase: any, reference: string, payload: { status: string; notes?: string; metadata?: any }) => {
+  if (!supabase || !reference) return;
+  const targetId = toValidUuid(reference) || reference;
+
+  // 1. Try updating by transaction_ref
+  try {
+    let { error } = await supabase.from("payments").update(payload).eq("transaction_ref", reference);
+    if (!error) return;
+    if (error && (error.message.includes("schema cache") || error.message.includes("column") || (error as any).code === "PGRST204")) {
+      const fallback = await supabase.from("payments").update({ status: payload.status }).eq("transaction_ref", reference);
+      if (!fallback.error) return;
+    }
+  } catch {}
+
+  // 2. Try updating by id
+  try {
+    let { error } = await supabase.from("payments").update(payload).eq("id", targetId);
+    if (!error) return;
+    if (error && (error.message.includes("schema cache") || error.message.includes("column") || (error as any).code === "PGRST204")) {
+      await supabase.from("payments").update({ status: payload.status }).eq("id", targetId);
+    }
+  } catch {}
+};
+
+const safeUpsertPaymentsInSupabase = async (supabase: any, rows: any[]) => {
+  if (!supabase || !rows || rows.length === 0) return { error: null };
+  let currentRows = [...rows];
+  let { error } = await supabase.from("payments").upsert(currentRows);
+
+  for (let attempt = 0; attempt < 5 && error; attempt++) {
+    const msg = error.message || "";
+    if (msg.includes("schema cache") || msg.includes("column") || (error as any).code === "PGRST204") {
+      const match = msg.match(/Could not find the ['"]([^'"]+)['"] column/i) || msg.match(/column ['"]([^'"]+)['"] of relation/i) || msg.match(/column payments\.([a-zA-Z0-9_]+) does not exist/i);
+      const missingCol = match ? match[1] : null;
+
+      currentRows = currentRows.map((r: any) => {
+        const copy = { ...r };
+        if (missingCol && missingCol in copy) {
+          delete copy[missingCol];
+        } else {
+          delete copy.metadata;
+          delete copy.reference;
+          delete copy.user_email;
+        }
+        return copy;
+      });
+
+      const retry = await supabase.from("payments").upsert(currentRows);
+      if (!retry.error) {
+        error = null;
+        break;
+      }
+      error = retry.error;
+    } else {
+      break;
+    }
+  }
+
+  return { error };
 };
 
 // Helper: Create pending payment record in Database (Supabase)
@@ -135,24 +223,21 @@ const createPendingPaymentInFirestore = async (params: {
     const provider = params.provider || (params.reference.includes("_KORA_") ? "korapay" : "squad");
     const supabase = getSupabaseAdminClient();
     if (supabase) {
-      const { error } = await supabase.from("payments").upsert({
+      const paymentRow = paymentToRow({
         id: params.reference,
-        user_id: params.userId,
-        user_name: params.fullName || "Acadet Student",
-        user_email: params.email,
-        amount: params.amount,
-        plan_id: params.planId || "premium",
-        plan_name: params.plan || "Premium Membership",
-        gateway: provider,
         reference: params.reference,
-        status: "pending",
-        metadata: {
-          fullName: params.fullName || "Acadet Student",
-          plan: params.plan || "Premium Membership",
-          durationDays: params.durationDays || 30,
-        },
-        created_at: new Date().toISOString(),
+        userId: params.userId,
+        userName: params.fullName || "Acadet Student",
+        userEmail: params.email,
+        amount: params.amount,
+        planId: params.planId || "premium",
+        planName: params.plan || "Premium Membership",
+        gateway: provider,
+        paymentMethod: provider === "korapay" ? "KoraPay Checkout" : "Squad Checkout",
+        status: "Pending",
+        durationDays: params.durationDays || 30,
       });
+      const { error } = await safeUpsertPaymentsInSupabase(supabase, [paymentRow]);
       if (error) throw new Error(error.message);
     }
     console.log(`[Database Server] Created pending payment record: ${params.reference} (Amount: ₦${params.amount}, Duration: ${params.durationDays || 30} days, Provider: ${provider})`);
@@ -276,21 +361,23 @@ const activateSubscriptionInFirestore = async (params: {
       // 2. Update Payment Record in Supabase
       if (userWriteError) throw new Error(userWriteError.message);
 
-      const { error: paymentWriteError } = await supabase.from("payments").upsert({
+      const paymentRow = paymentToRow({
         id: params.reference,
-        user_id: params.userId,
-        user_name: params.userName || "Acadet Student",
-        user_email: params.userEmail,
-        amount: params.amount,
-        plan_id: params.planId || "premium",
-        plan_name: params.planName || "Premium Membership",
-        payment_method: params.paymentMethod || gatewayDisplayName,
-        gateway: provider,
         reference: params.reference,
-        status: "success",
-        metadata: paymentRecord,
-        created_at: paidAt,
+        userId: params.userId,
+        userName: params.userName || "Acadet Student",
+        userEmail: params.userEmail,
+        amount: params.amount,
+        planId: params.planId || "premium",
+        planName: params.planName || "Premium Membership",
+        gateway: provider,
+        paymentMethod: params.paymentMethod || gatewayDisplayName,
+        status: "Successful",
+        durationDays: durationInDays,
+        notes: JSON.stringify(paymentRecord),
       });
+
+      const { error: paymentWriteError } = await safeUpsertPaymentsInSupabase(supabase, [paymentRow]);
 
       if (paymentWriteError) throw new Error(paymentWriteError.message);
 
@@ -1634,9 +1721,8 @@ const handlePaymentVerification = async (req: express.Request, res: express.Resp
       try {
         const supabase = getSupabaseAdminClient();
         if (supabase) {
-          const { data: pDoc, error: paymentLookupError } = await supabase.from("payments").select("gateway, metadata").eq("reference", reference).maybeSingle();
-          if (paymentLookupError) throw new Error(paymentLookupError.message);
-          if (pDoc && (pDoc.gateway === "korapay" || (pDoc.metadata as any)?.provider === "korapay")) {
+          const pDoc = await findPaymentDocInSupabase(supabase, reference);
+          if (pDoc && (pDoc.gateway === "korapay" || pDoc.provider === "korapay" || (pDoc.metadata as any)?.provider === "korapay" || (pDoc.notes && typeof pDoc.notes === "string" && pDoc.notes.includes("korapay")))) {
             isKorapay = true;
           }
         }
@@ -1679,14 +1765,14 @@ const handlePaymentVerification = async (req: express.Request, res: express.Resp
         try {
           const supabase = getSupabaseAdminClient();
           if (supabase) {
-            const { error } = await supabase.from("payments").update({
+            const failurePayload = {
               status: "failed",
-              metadata: { korapayResponse: verifyData, updatedAt: new Date().toISOString() },
-            }).eq("reference", reference);
-            if (error) throw new Error(error.message);
+              notes: JSON.stringify({ korapayResponse: verifyData, updatedAt: new Date().toISOString() }),
+            };
+            await updatePaymentStatusInSupabase(supabase, reference, failurePayload);
           }
         } catch (err) {
-          console.error("Failed to set payment failed status:", err);
+          console.warn("[KoraPay Verify] Non-blocking payment failed status notice:", err);
         }
 
         return res.status(400).json({
@@ -1703,15 +1789,14 @@ const handlePaymentVerification = async (req: express.Request, res: express.Resp
       try {
         const supabase = getSupabaseAdminClient();
         if (supabase) {
-          const { data: pDoc, error: paymentLookupError } = await supabase.from("payments").select("*").eq("reference", reference).maybeSingle();
-          if (paymentLookupError) throw new Error(paymentLookupError.message);
+          const pDoc = await findPaymentDocInSupabase(supabase, reference);
           if (pDoc) {
             storedPending = {
               ...pDoc,
               amount: pDoc.amount,
-              planId: (pDoc.metadata as any)?.planId,
-              plan: (pDoc.metadata as any)?.planName,
-              durationDays: (pDoc.metadata as any)?.durationDays,
+              planId: pDoc.plan_id || (pDoc.notes as any)?.planId,
+              plan: pDoc.plan_name || pDoc.plan || (pDoc.notes as any)?.planName,
+              durationDays: pDoc.duration_days || (pDoc.notes as any)?.durationDays,
             };
           }
         }
@@ -1791,14 +1876,14 @@ const handlePaymentVerification = async (req: express.Request, res: express.Resp
       try {
         const supabase = getSupabaseAdminClient();
         if (supabase) {
-          const { error } = await supabase.from("payments").update({
+          const failurePayload = {
             status: "failed",
-            metadata: { squadResponse: verifyData, updatedAt: new Date().toISOString() },
-          }).eq("reference", reference);
-          if (error) throw new Error(error.message);
+            notes: JSON.stringify({ squadResponse: verifyData, updatedAt: new Date().toISOString() }),
+          };
+          await updatePaymentStatusInSupabase(supabase, reference, failurePayload);
         }
       } catch (err) {
-        console.error("Failed to set payment failed status:", err);
+        console.warn("[Squad Verify] Non-blocking payment failed status notice:", err);
       }
 
       return res.status(400).json({
@@ -1815,15 +1900,14 @@ const handlePaymentVerification = async (req: express.Request, res: express.Resp
     try {
       const supabase = getSupabaseAdminClient();
       if (supabase) {
-        const { data: pDoc, error: paymentLookupError } = await supabase.from("payments").select("*").eq("reference", reference).maybeSingle();
-        if (paymentLookupError) throw new Error(paymentLookupError.message);
+        const pDoc = await findPaymentDocInSupabase(supabase, reference);
         if (pDoc) {
           storedPending = {
             ...pDoc,
             amount: pDoc.amount,
-            planId: (pDoc.metadata as any)?.planId,
-            plan: (pDoc.metadata as any)?.planName,
-            durationDays: (pDoc.metadata as any)?.durationDays,
+            planId: pDoc.plan_id || (pDoc.notes as any)?.planId,
+            plan: pDoc.plan_name || pDoc.plan || (pDoc.notes as any)?.planName,
+            durationDays: pDoc.duration_days || (pDoc.notes as any)?.durationDays,
           };
         }
       }
@@ -1931,17 +2015,16 @@ const handleSquadWebhook = async (req: express.Request, res: express.Response) =
       try {
         const supabase = getSupabaseAdminClient();
         if (supabase) {
-          const { data: pDoc, error: paymentLookupError } = await supabase.from("payments").select("*").eq("reference", reference).maybeSingle();
-          if (paymentLookupError) throw new Error(paymentLookupError.message);
+          const pDoc = await findPaymentDocInSupabase(supabase, reference);
           if (pDoc) {
             storedPending = {
               ...pDoc,
               amount: pDoc.amount,
               userId: pDoc.user_id,
-              email: pDoc.user_email,
-              planId: (pDoc.metadata as any)?.planId,
-              plan: (pDoc.metadata as any)?.planName,
-              durationDays: (pDoc.metadata as any)?.durationDays,
+              email: pDoc.email,
+              planId: pDoc.plan_id || (pDoc.notes as any)?.planId,
+              plan: pDoc.plan_name || pDoc.plan || (pDoc.notes as any)?.planName,
+              durationDays: pDoc.duration_days || (pDoc.notes as any)?.durationDays,
             };
           }
         }
@@ -2050,17 +2133,16 @@ const handleKorapayWebhook = async (req: express.Request, res: express.Response)
       try {
         const supabase = getSupabaseAdminClient();
         if (supabase) {
-          const { data: pDoc, error: paymentLookupError } = await supabase.from("payments").select("*").eq("reference", reference).maybeSingle();
-          if (paymentLookupError) throw new Error(paymentLookupError.message);
+          const pDoc = await findPaymentDocInSupabase(supabase, reference);
           if (pDoc) {
             storedPending = {
               ...pDoc,
               amount: pDoc.amount,
               userId: pDoc.user_id,
-              email: pDoc.user_email,
-              planId: (pDoc.metadata as any)?.planId,
-              plan: (pDoc.metadata as any)?.planName,
-              durationDays: (pDoc.metadata as any)?.durationDays,
+              email: pDoc.email,
+              planId: pDoc.plan_id || (pDoc.notes as any)?.planId,
+              plan: pDoc.plan_name || pDoc.plan || (pDoc.notes as any)?.planName,
+              durationDays: pDoc.duration_days || (pDoc.notes as any)?.durationDays,
             };
           }
         }
@@ -2100,7 +2182,7 @@ const handleKorapayWebhook = async (req: express.Request, res: express.Response)
       }
     }
 
-    return res.status(200).json({ status: "success", message: "KoraPay webhook processed successfully" });
+    return res.status(200).json({ status: "success", message: "Webhook processed" });
   } catch (err: any) {
     console.error("[KoraPay Webhook Exception]", err);
     return res.status(200).json({ status: "success", message: "Webhook acknowledged" });
@@ -2925,7 +3007,7 @@ app.get(['/api/payments', '/api/admin/payments'], requireAdminPermission('manage
       const { data: payments, error } = await supabase.from('payments').select('*').order('created_at', { ascending: false }).limit(200);
       if (error) return res.status(500).json({ success: false, error: error.message });
       if (payments) {
-        return res.json({ success: true, transactions: payments });
+        return res.json({ success: true, transactions: payments.map(paymentFromRow) });
       }
     }
   } catch (err: any) {
@@ -2942,7 +3024,7 @@ app.get('/api/admin/students', requireAdminPermission('manage_students'), async 
       const { data: users, error } = await supabase.from('users').select('*').order('created_at', { ascending: false }).limit(500);
       if (error) return res.status(500).json({ success: false, error: error.message });
       if (users) {
-        return res.json({ success: true, students: users });
+        return res.json({ success: true, students: users.map(userFromRow) });
       }
     }
   } catch (err: any) {
@@ -3093,6 +3175,26 @@ app.get("/api/supabase/status", async (_req, res) => {
       error: err?.message || "Failed to check Supabase status.",
     });
   }
+});
+
+// =========================================================================
+// PRE-JAMB ACADEMY DEDICATED SUPABASE DATABASE CONFIGURATION & STATUS
+// =========================================================================
+
+app.get("/api/prejamb/config", (_req, res) => {
+  const url = (process.env.PREJAMB_SUPABASE_URL || process.env.VITE_PREJAMB_SUPABASE_URL || "").trim();
+  const anonKey = (process.env.PREJAMB_SUPABASE_ANON_KEY || process.env.VITE_PREJAMB_SUPABASE_ANON_KEY || "").trim();
+  const serviceKey = (process.env.PREJAMB_SUPABASE_SERVICE_ROLE_KEY || "").trim();
+
+  const isConfigured = Boolean(url && anonKey && url.length > 0 && anonKey.length > 0 && !url.includes("placeholder"));
+
+  return res.json({
+    success: true,
+    configured: isConfigured,
+    supabaseUrl: url,
+    supabaseAnonKey: anonKey,
+    hasServiceRoleKey: Boolean(serviceKey),
+  });
 });
 
 // Admin Migration Trigger: Seed initial catalog data to Supabase
@@ -3833,10 +3935,11 @@ app.post("/api/payments/sync", async (req, res) => {
     }
     const supabase = getSupabaseAdminClient();
     if (supabase) {
-      const { error } = await supabase.from("payments").upsert(items.map((item: any) => paymentToRow({
+      const rows = items.map((item: any) => paymentToRow({
         ...item,
         id: item.id || item.reference,
-      })));
+      }));
+      const { error } = await safeUpsertPaymentsInSupabase(supabase, rows);
       if (error) return res.status(500).json({ success: false, error: error.message });
     }
     return res.json({ success: true, count: items.length });

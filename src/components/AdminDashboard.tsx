@@ -46,6 +46,7 @@ import { TopicRequestManagementModule } from './admin/TopicRequestManagementModu
 import { MenCoreManagementModule } from './admin/MenCoreManagementModule';
 import { DepartmentManagementModule } from './admin/DepartmentManagementModule';
 import { FaceArenaAdminModule } from './admin/FaceArenaAdminModule';
+import { PreJambAdminModule } from './admin/PreJambAdminModule';
 import {
   AdminPermission,
   AdminRole as RbacAdminRole,
@@ -140,7 +141,8 @@ export type AdminCategory =
   | 'security_access'
   | 'topic_requests'
   | 'mencore_ai'
-  | 'face_arena';
+  | 'face_arena'
+  | 'prejamb_academy';
 
 export type AdminRole =
   | 'Super Administrator'
@@ -1405,7 +1407,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                 {activeCategory === 'topic_requests' && checkCategoryAccess('topic_requests').hasAccess && 'Community Learning & Topic Requests'}
                 {activeCategory === 'mencore_ai' && checkCategoryAccess('mencore_ai').hasAccess && 'MenCore AI System & Joyce Tutor Studio'}
                 {activeCategory === 'signup_departments' && checkCategoryAccess('signup_departments').hasAccess && 'Sign-Up Faculties & Departments Manager'}
-                {activeCategory === 'face_arena' && checkCategoryAccess('face_arena').hasAccess && 'Face Arena Weekly Quiz Management'}
+                {activeCategory === 'face_arena' && checkCategoryAccess('face_arena').hasAccess && 'Pre-JAMB Acadet CBT Test Management'}
               </h1>
             </div>
             <p className="text-xs text-slate-400 mt-1">
@@ -1452,7 +1454,8 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                   ['topic_requests', '21. Community Learning & Topic Requests'],
                   ['mencore_ai', '22. MenCore AI System & Joyce Tutor Studio'],
                   ['signup_departments', '23. Sign-Up Faculties & Departments Catalog'],
-                  ['face_arena', '24. Face Arena Quiz Management'],
+                  ['face_arena', '24. Pre-JAMB Acadet CBT Test Management'],
+                  ['prejamb_academy', '25. Pre-JAMB Academy CBT (Dedicated Supabase DB)'],
                 ] as [AdminCategory, string][]
               ).map(([catKey, label]) => {
                 const acc = checkCategoryAccess(catKey);
@@ -1841,7 +1844,8 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                 { id: 'security_access', title: 'Security & Access Control', desc: 'Firewall rules, login security, device manager & emergency lock.', icon: ShieldCheck, color: 'text-emerald-400', border: 'hover:border-emerald-500' },
                 { id: 'topic_requests', title: 'Community Learning & Topic Requests', desc: 'Community learning hub, student topic requests, grouped demand analytics, Joyce & video tutorial team production & video management.', icon: MessageSquarePlus, color: 'text-indigo-400', border: 'hover:border-indigo-500' },
                 { id: 'mencore_ai', title: 'MenCore AI System & Joyce Tutor Studio', desc: '11 AI management modules: system prompt, vector knowledge base, model router, audio TTS engine, rate limits & cost analytics.', icon: Sparkles, color: 'text-amber-400', border: 'hover:border-amber-500' },
-                { id: 'face_arena', title: 'Face Arena Quiz Challenges', desc: 'Manage weekly face arena CBT competitions, participant lists & scoreboards.', icon: Swords, color: 'text-amber-400', border: 'hover:border-amber-500' },
+                { id: 'face_arena', title: 'Pre-JAMB Acadet CBT Test', desc: 'Manage scheduled Pre-JAMB UTME CBT simulations, test URLs, candidate participant lists & scoreboards.', icon: Swords, color: 'text-amber-400', border: 'hover:border-amber-500' },
+                { id: 'prejamb_academy', title: 'Pre-JAMB Academy CBT (Supabase)', desc: 'Dedicated Pre-JAMB CBT system with separate Supabase database for UTME questions, subjects, candidates, mock exams & results.', icon: Database, color: 'text-amber-400', border: 'hover:border-amber-500' },
               ].map((cat) => {
                 const IconComp = cat.icon;
                 const access = checkCategoryAccess(cat.id as AdminCategory);
@@ -4793,6 +4797,11 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
       {/* --- Face Arena Weekly Quiz Challenge Management --- */}
       {activeCategory === 'face_arena' && (
         <FaceArenaAdminModule />
+      )}
+
+      {/* --- Pre-JAMB Academy Dedicated CBT & Separate Supabase Database Management --- */}
+      {activeCategory === 'prejamb_academy' && (
+        <PreJambAdminModule />
       )}
     </>
   )}

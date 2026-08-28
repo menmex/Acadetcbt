@@ -32,7 +32,15 @@ export const SubscriptionModal: React.FC<SubscriptionModalProps> = ({
   onUpdateUser,
 }) => {
   const allPlans = (propsPlans && propsPlans.length > 0) ? propsPlans : StorageService.getSubscriptionPlans();
-  const activePlans = allPlans.filter((p) => p.active !== false && p.status !== 'Inactive' && p.status !== 'Disabled');
+  const rawActivePlans = allPlans.filter((p) => p.active !== false && p.status !== 'Inactive' && p.status !== 'Disabled');
+  const seenIds = new Set<string>();
+  const seenDurations = new Set<number>();
+  const activePlans = rawActivePlans.filter((p) => {
+    if (seenIds.has(p.id) || seenDurations.has(p.durationDays)) return false;
+    seenIds.add(p.id);
+    seenDurations.add(p.durationDays);
+    return true;
+  });
 
   const [selectedPlanId, setSelectedPlanId] = useState<string>('');
   const [selectedGateway, setSelectedGateway] = useState<'squad' | 'korapay'>('squad');
@@ -238,7 +246,7 @@ export const SubscriptionModal: React.FC<SubscriptionModalProps> = ({
                       ₦{plan.price.toLocaleString()}
                     </span>
                     <span className="text-[10px] text-slate-400 block">
-                      / {plan.durationDays} days
+                      / {plan.durationDays} {plan.durationDays === 1 ? 'day' : 'days'}
                     </span>
                   </div>
                 </div>

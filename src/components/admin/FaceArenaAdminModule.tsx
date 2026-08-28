@@ -326,15 +326,15 @@ export const FaceArenaAdminModule: React.FC = () => {
 
   // Start New Weekly Challenge (Archive current & start fresh)
   const handleStartNewWeeklyChallenge = () => {
-    if (!confirm('This will archive the current weekly challenge & leaderboard, and start a fresh weekly challenge. Proceed?')) {
+    if (!confirm('This will archive the current test & leaderboard, and start a fresh Pre-JAMB test. Proceed?')) {
       return;
     }
-    const title = newChallengeTitle.trim() || `Face Arena - Week ${archives.length + 2} Challenge`;
+    const title = newChallengeTitle.trim() || `Pre-JAMB Acadet CBT Test - Series ${archives.length + 2}`;
     const newSettings = StorageService.startNewWeeklyChallenge(title);
     setSettings(newSettings);
     syncFromStorage();
     setNewChallengeTitle('');
-    showNotice(`Started new challenge: ${title}`);
+    showNotice(`Started new test: ${title}`);
   };
 
   // Clear / Reset Leaderboard
@@ -404,7 +404,7 @@ export const FaceArenaAdminModule: React.FC = () => {
               </span>
             </div>
             <h1 className="text-2xl font-black text-white mt-1">
-              🏆 Face Arena Control Panel
+              🏆 Pre-JAMB Acadet CBT Test Control Panel
             </h1>
           </div>
 
@@ -514,21 +514,21 @@ export const FaceArenaAdminModule: React.FC = () => {
               </div>
             </div>
 
-            {/* Challenge Title & Description Edit Panel */}
+            {/* Challenge Title & Description & External Link Edit Panel */}
             <div className="p-5 bg-slate-950/60 rounded-2xl border border-slate-800 space-y-4">
               <h3 className="text-xs font-extrabold text-slate-300 uppercase tracking-wider flex items-center gap-1.5">
                 <Edit2 className="w-4 h-4 text-indigo-400" />
-                Challenge Details
+                Pre-JAMB Test Details & External Website Link
               </h3>
 
               <div className="space-y-3">
                 <div>
-                  <label className="block text-xs font-bold text-slate-300 mb-1">Challenge Title</label>
+                  <label className="block text-xs font-bold text-slate-300 mb-1">Test Title</label>
                   <input
                     type="text"
                     value={settings.weeklyTitle || ''}
                     onChange={(e) => handleSaveSettings({ ...settings, weeklyTitle: e.target.value })}
-                    placeholder="e.g. Face Arena - Week 1 Challenge"
+                    placeholder="e.g. Pre-JAMB Acadet CBT Test - Series 1"
                     className="w-full p-2.5 bg-slate-900 border border-slate-700 rounded-xl text-xs text-white"
                   />
                 </div>
@@ -539,9 +539,71 @@ export const FaceArenaAdminModule: React.FC = () => {
                     rows={2}
                     value={settings.description || ''}
                     onChange={(e) => handleSaveSettings({ ...settings, description: e.target.value })}
-                    placeholder="Enter challenge description..."
+                    placeholder="Enter test description..."
                     className="w-full p-2.5 bg-slate-900 border border-slate-700 rounded-xl text-xs text-white"
                   />
+                </div>
+
+                {/* Test Mode Selector */}
+                <div className="p-4 bg-slate-900 border border-slate-800 rounded-xl space-y-3">
+                  <label className="block text-xs font-black uppercase tracking-wider text-amber-400">
+                    Test Delivery Mode & External Website Integration
+                  </label>
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                    {[
+                      { id: 'in_app', label: 'In-App CBT Quiz', desc: 'Built-in CBT simulator with instant scoring' },
+                      { id: 'external_link', label: 'External Website Link', desc: 'Redirects students to your external test portal' },
+                      { id: 'both', label: 'Both Options', desc: 'Allows students to choose in-app or external link' },
+                    ].map((m) => (
+                      <button
+                        key={m.id}
+                        type="button"
+                        onClick={() => handleSaveSettings({ ...settings, testMode: m.id as any })}
+                        className={`p-3 rounded-xl text-left border transition-all cursor-pointer ${
+                          (settings.testMode || 'in_app') === m.id
+                            ? 'bg-amber-500/20 border-amber-400 text-white'
+                            : 'bg-slate-950 border-slate-800 text-slate-400 hover:border-slate-700'
+                        }`}
+                      >
+                        <span className="block text-xs font-bold text-white">{m.label}</span>
+                        <span className="block text-[10px] text-slate-400 mt-0.5 leading-tight">{m.desc}</span>
+                      </button>
+                    ))}
+                  </div>
+
+                  {/* External URL Inputs */}
+                  {((settings.testMode || 'in_app') === 'external_link' || settings.testMode === 'both') && (
+                    <div className="pt-2 space-y-3 border-t border-slate-800 animate-fade-in">
+                      <div>
+                        <label className="block text-xs font-bold text-slate-300 mb-1">
+                          External Website / Test Portal URL <span className="text-rose-400">*</span>
+                        </label>
+                        <input
+                          type="url"
+                          value={settings.externalTestUrl || ''}
+                          onChange={(e) => handleSaveSettings({ ...settings, externalTestUrl: e.target.value })}
+                          placeholder="https://yourwebsite.com/test-portal or Google Forms / Classmarker link"
+                          className="w-full p-2.5 bg-slate-950 border border-slate-700 rounded-xl text-xs text-white focus:border-amber-400"
+                        />
+                        <span className="text-[11px] text-slate-400 mt-1 block">
+                          Paste your external website or CBT portal link here. When students click "Take Pre-JAMB Test", they will be directed here.
+                        </span>
+                      </div>
+
+                      <div>
+                        <label className="block text-xs font-bold text-slate-300 mb-1">
+                          Custom Button Label
+                        </label>
+                        <input
+                          type="text"
+                          value={settings.externalButtonText || ''}
+                          onChange={(e) => handleSaveSettings({ ...settings, externalButtonText: e.target.value })}
+                          placeholder="e.g. Start Pre-JAMB Test on Official Portal"
+                          className="w-full p-2.5 bg-slate-950 border border-slate-700 rounded-xl text-xs text-white"
+                        />
+                      </div>
+                    </div>
+                  )}
                 </div>
               </div>
             </div>
@@ -603,10 +665,10 @@ export const FaceArenaAdminModule: React.FC = () => {
             <div>
               <h2 className="text-lg font-bold text-white flex items-center gap-2">
                 <HelpCircle className="w-5 h-5 text-indigo-400" />
-                Face Arena Question Management
+                Pre-JAMB Test Question Management
               </h2>
               <p className="text-xs text-slate-400 mt-0.5">
-                Add, edit, import, export, or AI-generate questions specifically for the Face Arena challenge.
+                Add, edit, import, export, or AI-generate questions specifically for the Pre-JAMB Acadet CBT Test simulation.
               </p>
             </div>
 
@@ -1107,7 +1169,7 @@ export const FaceArenaAdminModule: React.FC = () => {
         <div className="bg-slate-900 border border-slate-800 rounded-3xl p-6 space-y-6">
           <h2 className="text-lg font-bold text-white flex items-center gap-2">
             <Settings className="w-5 h-5 text-indigo-400" />
-            Face Arena Timer & Quiz Configurations
+            Pre-JAMB Test Timer & CBT Configurations
           </h2>
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6 bg-slate-950/60 p-6 rounded-2xl border border-slate-800">
@@ -1420,7 +1482,7 @@ export const FaceArenaAdminModule: React.FC = () => {
         <div className="bg-slate-900 border border-slate-800 rounded-3xl p-6 space-y-6">
           <h2 className="text-lg font-bold text-white flex items-center gap-2">
             <BarChart3 className="w-5 h-5 text-indigo-400" />
-            Face Arena Analytics Dashboard
+            Pre-JAMB Acadet CBT Test Analytics Dashboard
           </h2>
 
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">

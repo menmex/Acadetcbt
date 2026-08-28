@@ -168,6 +168,7 @@ export const CATEGORY_REQUIRED_PERMISSIONS: Record<string, AdminPermission> = {
   topic_requests: 'manage_study_materials',
   mencore_ai: 'manage_settings',
   face_arena: 'manage_questions',
+  prejamb_academy: 'manage_questions',
 };
 
 /**

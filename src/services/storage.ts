@@ -653,8 +653,8 @@ const STORAGE_KEYS = {
 const DEFAULT_FACE_ARENA_SETTINGS: FaceArenaSettings = {
   status: 'open',
   weeklyChallengeId: 'week-1',
-  weeklyTitle: 'Face Arena - Week 1 Challenge',
-  description: 'Join the premier weekly CBT contest! Answer exam questions in real-time, rank on the national leaderboard, and win grand prizes.',
+  weeklyTitle: 'Pre-JAMB Acadet CBT Test - Series 1',
+  description: 'Join the premier Pre-JAMB CBT mock simulation! Test your UTME readiness in real-time, rank on the national candidate leaderboard, and evaluate your target 300+ score.',
   bannerUrl: 'https://images.unsplash.com/photo-1516321318423-f06f85e504b3?w=1200&auto=format&fit=crop&q=80',
   startDate: new Date().toISOString(),
   endDate: new Date(Date.now() + 7 * 24 * 3600 * 1000).toISOString(),
@@ -667,6 +667,9 @@ const DEFAULT_FACE_ARENA_SETTINGS: FaceArenaSettings = {
   allowPreviousQuestion: true,
   autoSubmitOnTimeout: true,
   showResultsImmediately: true,
+  externalTestUrl: '',
+  externalButtonText: 'Start Test on External Portal',
+  testMode: 'in_app',
   createdAt: new Date().toISOString(),
   updatedAt: new Date().toISOString(),
 };
@@ -1995,7 +1998,32 @@ export class StorageService {
 
   // Plans & Transactions
   static getPlans(): SubscriptionPlan[] {
-    return this.getItem<SubscriptionPlan[]>(STORAGE_KEYS.PLANS, DEFAULT_PLANS);
+    const raw = this.getItem<SubscriptionPlan[]>(STORAGE_KEYS.PLANS, DEFAULT_PLANS);
+    if (!Array.isArray(raw) || raw.length === 0) {
+      return DEFAULT_PLANS;
+    }
+    const seenIds = new Set<string>();
+    const seenDurations = new Set<number>();
+    const uniquePlans: SubscriptionPlan[] = [];
+
+    for (const plan of raw) {
+      if (!plan || !plan.id) continue;
+      if (seenIds.has(plan.id) || seenDurations.has(plan.durationDays)) continue;
+      seenIds.add(plan.id);
+      seenDurations.add(plan.durationDays);
+      uniquePlans.push(plan);
+    }
+
+    for (const defaultPlan of DEFAULT_PLANS) {
+      if (!seenDurations.has(defaultPlan.durationDays) && !seenIds.has(defaultPlan.id)) {
+        seenIds.add(defaultPlan.id);
+        seenDurations.add(defaultPlan.durationDays);
+        uniquePlans.push(defaultPlan);
+      }
+    }
+
+    uniquePlans.sort((a, b) => a.durationDays - b.durationDays);
+    return uniquePlans.length > 0 ? uniquePlans : DEFAULT_PLANS;
   }
 
   static getSubscriptionPlans(): SubscriptionPlan[] {
@@ -2444,7 +2472,7 @@ export class StorageService {
       ...this.getFaceArenaSettings(),
       status: 'open',
       weeklyChallengeId,
-      weeklyTitle: newTitle || `Face Arena - Week ${weekNum} Challenge`,
+      weeklyTitle: newTitle || `Pre-JAMB Acadet CBT Test - Series ${weekNum}`,
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
     };
@@ -3939,13 +3967,13 @@ export class StorageService {
     const defaultLinks: QuickLinkItem[] = [
       {
         id: 'ql-1',
-        title: 'Face Arena',
-        description: 'Real-time CBT Quiz Battle & Competition',
+        title: 'Pre-JAMB CBT Test',
+        description: 'National Pre-JAMB Acadet CBT Test & Simulation',
         icon: 'Swords',
         url: '/face-arena',
         status: 'active',
         order: 1,
-        badge: 'LIVE BATTLE',
+        badge: 'LIVE TEST',
         target: '_self',
         createdAt: new Date().toISOString(),
       },
@@ -4045,7 +4073,7 @@ export class StorageService {
         type: 'quick_links',
         title: '⚡ Essential Student Links & Portals',
         subtitle: 'Direct access to quick tools, study materials, and learning portals',
-        description: 'Explore live Face Arena CBT battles, WhatsApp channels, scholarship updates, and study PDFs.',
+        description: 'Explore live Pre-JAMB Acadet CBT Tests, WhatsApp channels, scholarship updates, and study PDFs.',
         status: 'active',
         order: 2,
         createdAt: new Date().toISOString(),
@@ -4053,16 +4081,16 @@ export class StorageService {
       {
         id: 'sec-3',
         type: 'featured_content',
-        title: '🏆 Face Arena Live CBT Championship',
-        subtitle: 'Challenge fellow university students in real-time quiz battles',
-        description: 'Compete head-to-head on verified university past questions, earn instant points, and climb the national student leaderboard.',
-        buttonText: 'Enter Face Arena Battle',
+        title: '🏆 Pre-JAMB Acadet CBT Test',
+        subtitle: 'Simulate the exact UTME exam environment & rank on national leaderboards',
+        description: 'Compete head-to-head on verified JAMB past questions, earn instant aggregate score reports, and climb the national candidate leaderboard.',
+        buttonText: 'Take Pre-JAMB Test',
         buttonLink: '/face-arena',
         imageUrl: 'https://images.unsplash.com/photo-1516321318423-f06f85e504b3?w=800&auto=format&fit=crop&q=80',
         bgColor: 'from-amber-950/40 via-slate-900/80 to-slate-950',
         status: 'active',
         order: 3,
-        badge: 'HOT FEATURE',
+        badge: 'UTME SIMULATION',
         createdAt: new Date().toISOString(),
       },
       {

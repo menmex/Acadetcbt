@@ -43,6 +43,7 @@ import { InAppNotificationOverlay } from './components/InAppNotificationOverlay'
 import { NotificationCenterModal } from './components/NotificationCenterModal';
 import { PaymentSuccessView } from './components/PaymentSuccessView';
 import { FounderPage } from './components/FounderPage';
+import { PreJambAcademyApp } from './components/prejamb/PreJambAcademyApp';
 
 export default function App() {
   const [isNotifCenterOpen, setIsNotifCenterOpen] = useState<boolean>(false);
@@ -614,6 +615,7 @@ export default function App() {
                 handleOpenAuth('login');
               }
             }}
+            onStartPreJamb={() => handleNavigate('pre_jamb')}
             onOpenAuth={(mode) => handleOpenAuth(mode || 'register')}
             onOpenSubscribe={() => setSubModalOpen(true)}
             plans={plans}
@@ -724,6 +726,13 @@ export default function App() {
           <FaceArenaView
             user={currentUser}
             onNavigate={handleNavigate}
+          />
+        )}
+
+        {activeTab === 'pre_jamb' && (
+          <PreJambAcademyApp
+            user={currentUser}
+            onExitToMainApp={() => handleNavigate('dashboard')}
           />
         )}
 

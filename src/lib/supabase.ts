@@ -243,25 +243,44 @@ async function responseResult(response: Response): Promise<SyncResult> {
 async function upsertRows(table: string, rows: DbRow[]): Promise<SyncResult> {
   const admin = getSupabaseAdminClient();
   if (!admin) return fail('Supabase is not configured');
-  let { error } = await admin.from(table).upsert(rows);
-  if (error && (error.message.includes('semester') || error.message.includes('schema cache') || (error as any).code === 'PGRST204')) {
-    const fallbackRows = rows.map((r: any) => {
+  let currentRows = rows;
+  let { error } = await admin.from(table).upsert(currentRows);
+
+  // Up to 5 recovery attempts for schema cache / missing column variations
+  for (let attempt = 0; attempt < 5 && error; attempt++) {
+    const msg = error.message || '';
+    const isSchemaError = msg.includes('schema cache') || msg.includes('column') || msg.includes('semester') || (error as any).code === 'PGRST204';
+    if (!isSchemaError) break;
+
+    // Detect column name from error message if available
+    const match = msg.match(/Could not find the ['"]([^'"]+)['"] column/i) || msg.match(/column ['"]([^'"]+)['"] of relation/i);
+    const missingCol = match ? match[1] : null;
+
+    currentRows = currentRows.map((r: any) => {
       const copy = { ...r };
-      if (copy.semester) {
+      if (missingCol && missingCol in copy) {
+        delete copy[missingCol];
+      }
+      if (copy.semester && (msg.includes('semester') || !missingCol)) {
         const semTag = `__SEM:${copy.semester}__`;
         if (table === 'courses') {
           copy.description = copy.description ? `${copy.description} ${semTag}` : semTag;
         } else if (table === 'questions') {
           copy.explanation = copy.explanation ? `${copy.explanation} ${semTag}` : semTag;
         }
+        delete copy.semester;
       }
-      delete copy.semester;
       return copy;
     });
-    const retry = await admin.from(table).upsert(fallbackRows);
-    if (!retry.error) return ok();
+
+    const retry = await admin.from(table).upsert(currentRows);
+    if (!retry.error) {
+      error = null;
+      break;
+    }
     error = retry.error;
   }
+
   return error ? fail(error.message) : ok();
 }
 

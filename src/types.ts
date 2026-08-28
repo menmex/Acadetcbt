@@ -345,7 +345,8 @@ export interface PaymentTransaction {
   amount: number;
   planName: string;
   planId?: string;
-  date: string;
+  durationDays?: number;
+  date?: string;
   paymentDate?: string;
   expiryDate?: string;
   status: 'Successful' | 'Pending' | 'Failed' | 'Refunded';
@@ -356,6 +357,7 @@ export interface PaymentTransaction {
   handledByAdmin?: string;
   rejectionReason?: string;
   notes?: string;
+  metadata?: Record<string, any> | any;
 }
 
 export interface LeaderboardStudentEntry {
@@ -961,22 +963,36 @@ export const SEED_QUESTIONS: Question[] = [];
 
 export const DEFAULT_PLANS: SubscriptionPlan[] = [
   {
-    id: 'basic',
-    name: 'Basic',
+    id: 'plan-1d',
+    name: '1-Day Starter Pass',
     price: 150,
     currency: 'NGN',
-    durationDays: 2,
-    description: '2-Day Starter Pass',
+    durationDays: 1,
+    description: '1-Day Starter Pass',
     active: true,
     features: [
-      '2-Day full CBT practice access',
+      '1-Day full CBT practice access',
       'Unlimited practice questions & explanations',
       'Instant AI CBT simulation',
     ],
   },
   {
-    id: 'standard',
-    name: 'Standard',
+    id: 'plan-10d',
+    name: '10-Day Intensive Pass',
+    price: 500,
+    currency: 'NGN',
+    durationDays: 10,
+    description: '10-Day Intensive Pass',
+    active: true,
+    features: [
+      '10-Day unlimited practice questions',
+      'Unlimited CBT simulations',
+      'Diagnostic AI feedback & solutions',
+    ],
+  },
+  {
+    id: 'plan-14d',
+    name: '14-Day Premium Access',
     price: 800,
     currency: 'NGN',
     durationDays: 14,
@@ -991,8 +1007,8 @@ export const DEFAULT_PLANS: SubscriptionPlan[] = [
     ],
   },
   {
-    id: 'premium',
-    name: 'Premium',
+    id: 'plan-30d',
+    name: '30-Day Full Access',
     price: 1500,
     currency: 'NGN',
     durationDays: 30,
@@ -1004,6 +1020,21 @@ export const DEFAULT_PLANS: SubscriptionPlan[] = [
       'SMART Diagnostic Analysis',
       'Downloadable PDF summaries',
       'Priority academic support',
+    ],
+  },
+  {
+    id: 'plan-90d',
+    name: '90-Day Semester Pass',
+    price: 3500,
+    currency: 'NGN',
+    durationDays: 90,
+    description: '90-Day Semester Pass',
+    active: true,
+    features: [
+      '90-Day complete semester CBT access',
+      'Full question bank & mock exams',
+      'MenCore AI tutor & step-by-step solutions',
+      'Comprehensive performance analytics',
     ],
   },
 ];
@@ -1618,6 +1649,9 @@ export interface FaceArenaSettings {
   allowPreviousQuestion: boolean;
   autoSubmitOnTimeout: boolean;
   showResultsImmediately: boolean;
+  externalTestUrl?: string;
+  externalButtonText?: string;
+  testMode?: 'in_app' | 'external_link' | 'both';
   createdAt: string;
   updatedAt: string;
 }

@@ -3,10 +3,16 @@
 -- Run this SQL in your Supabase Dashboard -> SQL Editor -> Click 'Run'
 -- ==============================================================================
 
--- Quick Migration for Existing Tables (Ensures Semester Column Exists):
+-- Quick Migration for Existing Tables (Ensures Required Columns Exist):
 ALTER TABLE IF EXISTS public.courses ADD COLUMN IF NOT EXISTS semester TEXT DEFAULT 'First Semester';
 ALTER TABLE IF EXISTS public.questions ADD COLUMN IF NOT EXISTS semester TEXT DEFAULT 'First Semester';
 ALTER TABLE IF EXISTS public.materials ADD COLUMN IF NOT EXISTS semester TEXT DEFAULT 'First Semester';
+ALTER TABLE IF EXISTS public.payments ADD COLUMN IF NOT EXISTS metadata JSONB DEFAULT '{}'::jsonb;
+ALTER TABLE IF EXISTS public.payments ADD COLUMN IF NOT EXISTS notes TEXT;
+ALTER TABLE IF EXISTS public.payments ADD COLUMN IF NOT EXISTS transaction_ref TEXT;
+ALTER TABLE IF EXISTS public.payments ADD COLUMN IF NOT EXISTS provider TEXT DEFAULT 'squad';
+ALTER TABLE IF EXISTS public.payments ADD COLUMN IF NOT EXISTS gateway TEXT DEFAULT 'squad';
+ALTER TABLE IF EXISTS public.payments ADD COLUMN IF NOT EXISTS duration_days INTEGER DEFAULT 30;
 NOTIFY pgrst, 'reload schema';
 
 -- Enable UUID Extension if not enabled
