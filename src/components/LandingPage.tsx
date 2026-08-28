@@ -26,6 +26,9 @@ import {
   Globe,
   Layers,
   Youtube,
+  Smartphone,
+  Download,
+  WifiOff,
 } from 'lucide-react';
 import { SubscriptionPlan, UserProfile, QuickLinkItem, HomepageSection } from '../types';
 import { StorageService } from '../services/storage';
@@ -39,6 +42,7 @@ interface LandingPageProps {
   currentUser?: UserProfile | null;
   onOpenFounder?: () => void;
   onStartPreJamb?: () => void;
+  onOpenInstallModal?: () => void;
 }
 
 export const LandingPage: React.FC<LandingPageProps> = ({
@@ -49,6 +53,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({
   currentUser,
   onOpenFounder,
   onStartPreJamb,
+  onOpenInstallModal,
 }) => {
   const [activeFaq, setActiveFaq] = useState<number | null>(0);
   const [selectedAnswer, setSelectedAnswer] = useState<string | null>(null);
@@ -162,7 +167,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({
               Practice verified university past questions, simulate timed CBT exams, generate custom questions from lecture notes, and get instant step-by-step explanations to score A’s.
             </p>
 
-            <div className="flex flex-col sm:flex-row items-center justify-center gap-4 mb-12">
+            <div className="flex flex-col sm:flex-row items-center justify-center gap-4 mb-8">
               <button
                 onClick={onStartPractice}
                 className="w-full sm:w-auto px-8 py-4 bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-sm rounded-xl shadow-xl shadow-indigo-600/25 hover:shadow-indigo-500/40 hover:-translate-y-0.5 transition-all flex items-center justify-center gap-2"
@@ -179,6 +184,17 @@ export const LandingPage: React.FC<LandingPageProps> = ({
                 Create Student Account
                 <ArrowRight className="w-4 h-4 text-slate-400" />
               </button>
+              {onOpenInstallModal && (
+                <button
+                  onClick={onOpenInstallModal}
+                  className="w-full sm:w-auto px-6 py-4 bg-gradient-to-r from-emerald-600 to-indigo-600 hover:from-emerald-500 hover:to-indigo-500 text-white font-bold text-sm rounded-xl shadow-lg shadow-emerald-600/20 hover:-translate-y-0.5 transition-all flex items-center justify-center gap-2 cursor-pointer"
+                  id="hero-install-app-btn"
+                >
+                  <Smartphone className="w-4 h-4 text-white" />
+                  <span>Download Mobile App</span>
+                  <Download className="w-4 h-4 text-emerald-200 animate-bounce" />
+                </button>
+              )}
             </div>
 
             {/* Quick Metrics */}

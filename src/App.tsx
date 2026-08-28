@@ -44,9 +44,12 @@ import { NotificationCenterModal } from './components/NotificationCenterModal';
 import { PaymentSuccessView } from './components/PaymentSuccessView';
 import { FounderPage } from './components/FounderPage';
 import { PreJambAcademyApp } from './components/prejamb/PreJambAcademyApp';
+import { InstallAppModal } from './components/InstallAppModal';
+import { MobileSuiteBar } from './components/MobileSuiteBar';
 
 export default function App() {
   const [isNotifCenterOpen, setIsNotifCenterOpen] = useState<boolean>(false);
+  const [isInstallModalOpen, setIsInstallModalOpen] = useState<boolean>(false);
 
   // Day / Night Theme Mode State
   const [themeMode, setThemeMode] = useState<'dark' | 'light'>(() => {
@@ -590,6 +593,7 @@ export default function App() {
         onOpenEditProfile={() => setEditProfileModalOpen(true)}
         onOpenAbout={() => setAboutModalOpen(true)}
         onOpenFeaturesPdf={() => setFeaturesPdfModalOpen(true)}
+        onOpenInstallModal={() => setIsInstallModalOpen(true)}
         onOpenNotificationCenter={() => setIsNotifCenterOpen(true)}
         themeMode={themeMode}
         onToggleTheme={toggleThemeMode}
@@ -603,7 +607,7 @@ export default function App() {
       />
 
       {/* Main View Router */}
-      <main className="flex-1 py-6">
+      <main className="flex-1 py-6 pb-24 md:pb-6">
         
         {activeTab === 'landing' && (
           <LandingPage
@@ -618,6 +622,7 @@ export default function App() {
             onStartPreJamb={() => handleNavigate('pre_jamb')}
             onOpenAuth={(mode) => handleOpenAuth(mode || 'register')}
             onOpenSubscribe={() => setSubModalOpen(true)}
+            onOpenInstallModal={() => setIsInstallModalOpen(true)}
             plans={plans}
             onOpenFounder={() => handleNavigate('founder')}
           />
@@ -640,6 +645,7 @@ export default function App() {
             onOpenSubscribe={() => setSubModalOpen(true)}
             onOpenEditProfile={() => setEditProfileModalOpen(true)}
             onOpenSignUp={() => handleOpenAuth('register')}
+            onOpenInstallModal={() => setIsInstallModalOpen(true)}
           />
         )}
 
@@ -991,6 +997,30 @@ export default function App() {
         }}
         isAuthModalOpen={authModalOpen}
       />
+
+      {/* Mobile View Suite Bottom Navigation Bar */}
+      <MobileSuiteBar
+        currentUser={currentUser}
+        activeTab={activeTab}
+        onNavigate={handleNavigate}
+        onOpenAuth={(mode) => handleOpenAuth(mode || 'register')}
+        onOpenSubscribe={() => setSubModalOpen(true)}
+        onOpenInstallModal={() => setIsInstallModalOpen(true)}
+        onOpenEditProfile={() => setEditProfileModalOpen(true)}
+        onOpenAbout={() => setAboutModalOpen(true)}
+        onOpenFeaturesPdf={() => setFeaturesPdfModalOpen(true)}
+        onLogout={handleLogout}
+        themeMode={themeMode}
+        onToggleTheme={toggleThemeMode}
+      />
+
+      {/* Download & Install Mobile Suite Modal */}
+      {isInstallModalOpen && (
+        <InstallAppModal
+          isOpen={isInstallModalOpen}
+          onClose={() => setIsInstallModalOpen(false)}
+        />
+      )}
     </div>
   );
 }

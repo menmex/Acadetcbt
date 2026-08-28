@@ -17,6 +17,9 @@ import {
   TrendingUp,
   AlertTriangle,
   AlertCircle,
+  Smartphone,
+  Download,
+  WifiOff,
 } from 'lucide-react';
 import { getEffectiveStreak, getLast7DaysStreakStatus } from '../utils/streak';
 
@@ -29,6 +32,7 @@ interface StudentDashboardProps {
   onOpenSubscribe: () => void;
   onOpenEditProfile?: () => void;
   onOpenSignUp?: () => void;
+  onOpenInstallModal?: () => void;
 }
 
 export const StudentDashboard: React.FC<StudentDashboardProps> = ({
@@ -38,6 +42,7 @@ export const StudentDashboard: React.FC<StudentDashboardProps> = ({
   onOpenSubscribe,
   onOpenEditProfile,
   onOpenSignUp,
+  onOpenInstallModal,
 }) => {
   const isGuest = user?.isGuest ?? false;
   const isPremium = user?.subscription?.isPremium ?? false;
@@ -571,6 +576,39 @@ export const StudentDashboard: React.FC<StudentDashboardProps> = ({
         {/* Right Column: Recommendations & Bookmarks */}
         <div className="space-y-6">
           
+          {/* Mobile Suite App Download & Offline Practice Card */}
+          {onOpenInstallModal && (
+            <div className="bg-gradient-to-br from-indigo-950/80 via-slate-900 to-slate-950 border border-indigo-500/40 rounded-2xl p-6 shadow-xl relative overflow-hidden">
+              <div className="flex items-center justify-between mb-3">
+                <div className="flex items-center gap-2">
+                  <div className="p-2 rounded-xl bg-indigo-600/30 text-indigo-300 border border-indigo-500/40">
+                    <Smartphone className="w-5 h-5" />
+                  </div>
+                  <div>
+                    <h3 className="text-sm font-extrabold text-white">Mobile Suite App</h3>
+                    <p className="text-[10px] text-emerald-400 font-semibold flex items-center gap-1">
+                      <WifiOff className="w-3 h-3" /> Offline Practice Ready
+                    </p>
+                  </div>
+                </div>
+                <span className="text-[10px] bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 px-2 py-0.5 rounded-full font-bold">
+                  Free
+                </span>
+              </div>
+              <p className="text-xs text-slate-300 mb-4 leading-relaxed">
+                Download Acadet CBT MASTER to your Android, iPhone, or PC for instant full-screen practice with zero lag.
+              </p>
+              <button
+                onClick={onOpenInstallModal}
+                className="w-full py-2.5 bg-gradient-to-r from-indigo-600 to-emerald-600 hover:from-indigo-500 hover:to-emerald-500 text-white text-xs font-bold rounded-xl shadow-lg shadow-indigo-600/20 transition-all flex items-center justify-center gap-2 cursor-pointer"
+                id="dashboard-download-app-btn"
+              >
+                <Download className="w-4 h-4 animate-bounce" />
+                <span>Install & Download App</span>
+              </button>
+            </div>
+          )}
+
           {/* Saved Bookmarks Shortcut */}
           <div className="bg-slate-900 border border-slate-800 rounded-2xl p-6">
             <div className="flex items-center justify-between mb-3">

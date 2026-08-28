@@ -1,24 +1,29 @@
 {
-  "name": "Acadet CBT MASTER",
+  "name": "Acadet CBT MASTER - Mobile Suite",
   "short_name": "Acadet CBT",
-  "description": "Acadet CBT MASTER - Modern University Learning and Computer Based Test Practice Platform",
-  "start_url": "/",
+  "description": "Modern University Learning & Computer-Based Test Practice Suite. Practice past questions, simulate timed exams, and download offline course materials.",
+  "start_url": "/?source=pwa",
   "scope": "/",
-  "id": "/",
+  "id": "/?source=pwa",
   "display": "standalone",
-  "orientation": "any",
-  "background_color": "#020617",
-  "theme_color": "#020617",
+  "display_override": ["standalone", "window-controls-overlay", "minimal-ui"],
+  "orientation": "portrait-primary",
+  "background_color": "#090d16",
+  "theme_color": "#4f46e5",
+  "categories": ["education", "productivity", "utilities"],
+  "prefer_related_applications": false,
   "icons": [
     {
       "src": "/favicon-48x48.png",
       "sizes": "48x48",
-      "type": "image/png"
+      "type": "image/png",
+      "purpose": "any"
     },
     {
       "src": "/favicon-96x96.png",
       "sizes": "96x96",
-      "type": "image/png"
+      "type": "image/png",
+      "purpose": "any"
     },
     {
       "src": "/favicon-192x192.png",
@@ -31,6 +36,42 @@
       "sizes": "512x512",
       "type": "image/png",
       "purpose": "any maskable"
+    },
+    {
+      "src": "/apple-touch-icon.png",
+      "sizes": "180x180",
+      "type": "image/png",
+      "purpose": "any"
+    }
+  ],
+  "shortcuts": [
+    {
+      "name": "Practice Mode",
+      "short_name": "Practice",
+      "description": "Start untimed topical past question practice",
+      "url": "/#practice",
+      "icons": [{ "src": "/favicon-96x96.png", "sizes": "96x96" }]
+    },
+    {
+      "name": "Mock CBT Exam",
+      "short_name": "Mock CBT",
+      "description": "Launch realistic timed Computer-Based Test simulator",
+      "url": "/#mock_cbt",
+      "icons": [{ "src": "/favicon-96x96.png", "sizes": "96x96" }]
+    },
+    {
+      "name": "Pre-JAMB Academy",
+      "short_name": "Pre-JAMB",
+      "description": "Practice JAMB UTME past questions with instant scoring",
+      "url": "/#pre_jamb",
+      "icons": [{ "src": "/favicon-96x96.png", "sizes": "96x96" }]
+    },
+    {
+      "name": "Study Materials",
+      "short_name": "Materials",
+      "description": "Access university PDFs and past examination documents",
+      "url": "/#materials",
+      "icons": [{ "src": "/favicon-96x96.png", "sizes": "96x96" }]
     }
   ]
 }

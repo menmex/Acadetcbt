@@ -23,6 +23,8 @@ import {
   FileText,
   Sun,
   Moon,
+  Smartphone,
+  Download,
 } from 'lucide-react';
 import { getEffectiveStreak } from '../utils/streak';
 
@@ -37,6 +39,7 @@ interface NavbarProps {
   onOpenEditProfile?: () => void;
   onOpenAbout?: () => void;
   onOpenFeaturesPdf?: () => void;
+  onOpenInstallModal?: () => void;
   onOpenNotificationCenter?: () => void;
   themeMode?: 'dark' | 'light';
   onToggleTheme?: () => void;
@@ -53,6 +56,7 @@ export const Navbar: React.FC<NavbarProps> = ({
   onOpenEditProfile,
   onOpenAbout,
   onOpenFeaturesPdf,
+  onOpenInstallModal,
   onOpenNotificationCenter,
   themeMode = 'dark',
   onToggleTheme,
@@ -393,12 +397,26 @@ export const Navbar: React.FC<NavbarProps> = ({
           {onOpenFeaturesPdf && (
             <button
               onClick={onOpenFeaturesPdf}
-              className="hidden sm:flex items-center gap-1.5 px-3 py-1.5 bg-indigo-600/20 hover:bg-indigo-600/30 text-indigo-300 border border-indigo-500/40 rounded-xl text-xs font-semibold transition-all cursor-pointer shadow-sm"
+              className="hidden lg:flex items-center gap-1.5 px-3 py-1.5 bg-indigo-600/20 hover:bg-indigo-600/30 text-indigo-300 border border-indigo-500/40 rounded-xl text-xs font-semibold transition-all cursor-pointer shadow-sm"
               title="Download Platform Features PDF Document"
               id="navbar-features-pdf-btn"
             >
               <FileText className="w-3.5 h-3.5 text-indigo-400" />
               <span>Features PDF</span>
+            </button>
+          )}
+
+          {/* Install / Download Mobile App Button */}
+          {onOpenInstallModal && (
+            <button
+              onClick={onOpenInstallModal}
+              className="flex items-center gap-1.5 px-3 py-1.5 bg-gradient-to-r from-indigo-600 to-emerald-600 hover:from-indigo-500 hover:to-emerald-500 text-white rounded-xl text-xs font-bold transition-all cursor-pointer shadow-md shadow-indigo-600/20"
+              title="Install & Download App on Mobile"
+              id="navbar-install-app-btn"
+            >
+              <Smartphone className="w-3.5 h-3.5 text-white" />
+              <span className="hidden sm:inline">Install App</span>
+              <span className="sm:hidden">App</span>
             </button>
           )}
 
@@ -535,6 +553,20 @@ export const Navbar: React.FC<NavbarProps> = ({
                         Download Features PDF
                       </button>
                     )}
+
+                    {onOpenInstallModal && (
+                      <button
+                        onClick={() => {
+                          setUserDropdownOpen(false);
+                          onOpenInstallModal();
+                        }}
+                        className="w-full text-left px-4 py-2 text-xs text-emerald-300 hover:bg-slate-700 hover:text-white flex items-center gap-2 font-bold"
+                        id="dropdown-item-install-app"
+                      >
+                        <Smartphone className="w-4 h-4 text-emerald-400" />
+                        Install Mobile App Suite
+                      </button>
+                    )}
                   </div>
 
                   <div className="py-1">
@@ -647,6 +679,18 @@ export const Navbar: React.FC<NavbarProps> = ({
                   Admin Portal
                 </button>
               )}
+              {onOpenInstallModal && (
+                <button
+                  onClick={() => { onOpenInstallModal(); setMobileMenuOpen(false); }}
+                  className="w-full text-left px-3 py-2.5 text-xs font-bold text-white bg-gradient-to-r from-indigo-600 to-emerald-600 rounded-lg flex items-center justify-between shadow"
+                >
+                  <span className="flex items-center gap-2">
+                    <Smartphone className="w-4 h-4" />
+                    Download & Install Mobile App
+                  </span>
+                  <Download className="w-3.5 h-3.5" />
+                </button>
+              )}
               <button
                 onClick={() => { onNavigate('founder'); setMobileMenuOpen(false); }}
                 className="block w-full text-left px-3 py-2 text-sm text-amber-400 font-bold hover:bg-slate-800 rounded-lg"
@@ -668,6 +712,16 @@ export const Navbar: React.FC<NavbarProps> = ({
             </>
           ) : (
             <div className="flex flex-col gap-2 pt-2">
+              {onOpenInstallModal && (
+                <button
+                  onClick={() => { onOpenInstallModal(); setMobileMenuOpen(false); }}
+                  className="w-full text-center px-4 py-2.5 bg-gradient-to-r from-indigo-600 to-emerald-600 hover:from-indigo-500 hover:to-emerald-500 text-white font-extrabold rounded-lg text-xs flex items-center justify-center gap-2 shadow"
+                >
+                  <Smartphone className="w-4 h-4" />
+                  <span>Download & Install Mobile App</span>
+                  <Download className="w-3.5 h-3.5" />
+                </button>
+              )}
               <button
                 onClick={() => { onNavigate('founder'); setMobileMenuOpen(false); }}
                 className="w-full text-center px-4 py-2.5 bg-amber-500/10 hover:bg-amber-500/20 text-amber-300 font-bold rounded-lg border border-amber-500/30 text-xs flex items-center justify-center gap-1.5"
